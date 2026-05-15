@@ -125,6 +125,8 @@ export function GameInterface({ onBack, initialMode }: GameInterfaceProps) {
             rescue={state.rescue}
             citizens={state.citizens}
             districts={state.districts}
+            incidents={state.incidents}
+            emergencyUnits={state.emergencyUnits}
             activeDisasterType={state.activeDisaster?.type ?? null}
             onRunOperation={(operation) => actions.runRescue(operation)}
             onClose={() => setActivePanel(null)}
@@ -183,6 +185,10 @@ export function GameInterface({ onBack, initialMode }: GameInterfaceProps) {
             <span>District: {state.districts.find((d) => d.id === state.map.selectedDistrictId)?.name ?? "N/A"}</span>
             <span>Power health: {Math.round(state.economy.powerGridHealth)}</span>
             <span>Citizens tracked: {state.citizenAgents.length}</span>
+            <span>Road blocks: {state.roadGraph.edges.filter((edge) => edge.accessibility < 25).length}</span>
+            <span>Queued incidents: {state.incidents.filter((incident) => incident.status === "queued").length}</span>
+            <span>Resource fuel: {Math.round(state.resources.fuel)}</span>
+            <span>Medical stock: {Math.round(state.resources.medicalSupplies)}</span>
           </div>
         </div>
       </div>

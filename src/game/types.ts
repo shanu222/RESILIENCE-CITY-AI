@@ -21,7 +21,16 @@ export type DisasterType =
   | "building_collapse";
 
 export type BuildingCategory = "residential" | "public" | "infrastructure";
-export type HazardOverlay = "flood" | "seismic" | "drainage" | "heat" | "slope" | "infrastructure";
+export type HazardOverlay =
+  | "flood"
+  | "seismic"
+  | "drainage"
+  | "heat"
+  | "slope"
+  | "infrastructure"
+  | "traffic"
+  | "incidents"
+  | "power";
 export type FoundationType = "raft" | "pile" | "strip" | "mat";
 export type StructuralSystem = "moment-frame" | "shear-wall" | "braced-frame" | "masonry";
 export type MaterialType = "reinforced-concrete" | "steel" | "timber" | "masonry";
@@ -159,6 +168,8 @@ export interface RescueState {
   teamsDeployed: number;
   blockedRoutes: number;
   unitReadiness: number;
+  mutualAidRequests: number;
+  responseEscalationLevel: number;
 }
 
 export interface CitizenAgent {
@@ -212,6 +223,104 @@ export interface EconomyState {
   roadHealth: number;
 }
 
+export interface ResourceState {
+  fuel: number;
+  medicalSupplies: number;
+  rescueEquipment: number;
+  food: number;
+  water: number;
+  temporaryShelters: number;
+}
+
+export interface HospitalState {
+  id: string;
+  districtId: string;
+  name: string;
+  bedCapacity: number;
+  traumaLoad: number;
+  powerStability: number;
+  medicalSupplies: number;
+  accessibility: number;
+}
+
+export interface InfrastructureNode {
+  id: string;
+  districtId: string;
+  kind:
+    | "substation"
+    | "bridge"
+    | "water-plant"
+    | "hospital"
+    | "telecom-tower"
+    | "fuel-depot"
+    | "drainage-pump";
+  health: number;
+  active: boolean;
+  dependencyIds: string[];
+  load: number;
+}
+
+export interface RoadNode {
+  id: string;
+  districtId: string;
+  type: "intersection" | "bridge" | "tunnel" | "choke-point" | "highway-link" | "emergency-corridor";
+  position: [number, number];
+}
+
+export interface RoadEdge {
+  id: string;
+  from: string;
+  to: string;
+  capacity: number;
+  congestion: number;
+  floodability: number;
+  damage: number;
+  obstruction: number;
+  accessibility: number;
+  emergencyPriority: number;
+}
+
+export interface RoadGraphState {
+  nodes: RoadNode[];
+  edges: RoadEdge[];
+}
+
+export interface Incident {
+  id: string;
+  districtId: string;
+  hazardType: DisasterType | "infrastructure" | "medical" | "evacuation";
+  severity: number;
+  casualties: number;
+  accessibility: number;
+  urgency: number;
+  infrastructureImpact: number;
+  status: "queued" | "dispatched" | "resolved";
+  createdTick: number;
+}
+
+export interface EmergencyUnit {
+  id: string;
+  type:
+    | "ambulance"
+    | "fire-brigade"
+    | "engineering-inspector"
+    | "heavy-rescue"
+    | "drone"
+    | "helicopter"
+    | "police"
+    | "evacuation-bus";
+  districtId: string;
+  fuel: number;
+  fatigue: number;
+  capacity: number;
+  speed: number;
+  readiness: number;
+  damageExposure: number;
+  status: "idle" | "en-route" | "operating" | "maintenance";
+  assignedIncidentId?: string;
+  etaMinutes?: number;
+}
+
 export interface LearningState {
   engineeringXP: number;
   skillLevel: number;
@@ -246,6 +355,12 @@ export interface GameState {
   citizens: CitizenState;
   rescue: RescueState;
   economy: EconomyState;
+  resources: ResourceState;
+  hospitals: HospitalState[];
+  infrastructureNodes: InfrastructureNode[];
+  roadGraph: RoadGraphState;
+  incidents: Incident[];
+  emergencyUnits: EmergencyUnit[];
   learning: LearningState;
   map: MapState;
   districts: DistrictState[];

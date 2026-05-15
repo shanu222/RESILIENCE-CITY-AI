@@ -26,8 +26,21 @@ export function useGameSimulation() {
       citizens: { ...initial.citizens, ...(candidate.citizens ?? {}) },
       rescue: { ...initial.rescue, ...(candidate.rescue ?? {}) },
       economy: { ...initial.economy, ...(candidate.economy ?? {}) },
+      resources: { ...initial.resources, ...(candidate.resources ?? {}) },
       learning: { ...initial.learning, ...(candidate.learning ?? {}) },
       map: { ...initial.map, ...(candidate.map ?? {}) },
+      hospitals: candidate.hospitals?.length ? candidate.hospitals : initial.hospitals,
+      infrastructureNodes: candidate.infrastructureNodes?.length
+        ? candidate.infrastructureNodes
+        : initial.infrastructureNodes,
+      roadGraph: {
+        ...initial.roadGraph,
+        ...(candidate.roadGraph ?? {}),
+        nodes: candidate.roadGraph?.nodes?.length ? candidate.roadGraph.nodes : initial.roadGraph.nodes,
+        edges: candidate.roadGraph?.edges?.length ? candidate.roadGraph.edges : initial.roadGraph.edges,
+      },
+      incidents: candidate.incidents?.length ? candidate.incidents : initial.incidents,
+      emergencyUnits: candidate.emergencyUnits?.length ? candidate.emergencyUnits : initial.emergencyUnits,
       districts: candidate.districts?.length ? candidate.districts : initial.districts,
       citizenAgents: candidate.citizenAgents?.length ? candidate.citizenAgents : initial.citizenAgents,
       missions: candidate.missions?.length ? candidate.missions : initial.missions,

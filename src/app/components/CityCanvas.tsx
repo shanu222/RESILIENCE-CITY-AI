@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { MapContainer, Polygon, TileLayer, Tooltip, CircleMarker } from "react-leaflet";
+import { MapContainer, Polygon, TileLayer, Tooltip, CircleMarker, Polyline } from "react-leaflet";
 import { TreePine, Waves, ShieldAlert, Wind } from "lucide-react";
 import type { GameState } from "../../game/types";
 
@@ -32,6 +32,14 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
         return district.hazardExposure.slope;
       case "infrastructure":
         return 100 - district.infrastructureCondition;
+      case "traffic":
+        return district.dynamic.trafficLoad;
+      case "power":
+        return 100 - district.dynamic.powerStability;
+      case "incidents":
+        return state.incidents
+          .filter((incident) => incident.districtId === district.id && incident.status !== "resolved")
+          .reduce((acc, incident) => acc + incident.severity, 0);
       default:
         return district.hazardExposure.flood;
     }
@@ -81,6 +89,28 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
               </Polygon>
             );
           })}
+          {state.roadGraph.edges.map((edge) => {
+            const from = state.roadGraph.nodes.find((node) => node.id === edge.from);
+            const to = state.roadGraph.nodes.find((node) => node.id === edge.to);
+            if (!from || !to) return null;
+            const stress = 100 - edge.accessibility;
+            const color = stress > 75 ? "#ef4444" : stress > 50 ? "#f59e0b" : "#22c55e";
+            return (
+              <Polyline
+                key={edge.id}
+                positions={[from.position, to.position]}
+                pathOptions={{
+                  color,
+                  weight: Math.max(1, edge.capacity / 32),
+                  opacity: 0.7,
+                }}
+              >
+                <Tooltip sticky>
+                  {edge.id} | access {Math.round(edge.accessibility)} | congestion {Math.round(edge.congestion)}
+                </Tooltip>
+              </Polyline>
+            );
+          })}
           {state.districts.map((district) => (
             <CircleMarker
               key={`${district.id}-center`}
@@ -89,6 +119,46 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
               pathOptions={{ color: "#60a5fa", fillColor: "#60a5fa", fillOpacity: 0.8 }}
             />
           ))}
+          {state.incidents
+            .filter((incident) => incident.status !== "resolved")
+            .map((incident) => {
+              const district = state.districts.find((item) => item.id === incident.districtId);
+              if (!district) return null;
+              return (
+                <CircleMarker
+                  key={incident.id}
+                  center={district.center}
+                  radius={Math.max(5, incident.severity / 12)}
+                  pathOptions={{
+                    color: incident.status === "dispatched" ? "#f59e0b" : "#ef4444",
+                    fillColor: incident.status === "dispatched" ? "#f59e0b" : "#ef4444",
+                    fillOpacity: 0.75,
+                  }}
+                >
+                  <Tooltip sticky>
+                    Incident {incident.hazardType} | sev {Math.round(incident.severity)} | urg {Math.round(incident.urgency)}
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
+          {state.emergencyUnits
+            .filter((unit) => unit.status !== "idle")
+            .map((unit) => {
+              const district = state.districts.find((item) => item.id === unit.districtId);
+              if (!district) return null;
+              return (
+                <CircleMarker
+                  key={unit.id}
+                  center={[district.center[0] + 0.004, district.center[1] + 0.004]}
+                  radius={4}
+                  pathOptions={{ color: "#38bdf8", fillColor: "#38bdf8", fillOpacity: 0.9 }}
+                >
+                  <Tooltip sticky>
+                    {unit.type} | {unit.status} | ETA {unit.etaMinutes ?? "-"}m
+                  </Tooltip>
+                </CircleMarker>
+              );
+            })}
         </MapContainer>
       </div>
 
@@ -165,7 +235,7 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
 
       {/* Overlay controls */}
       <div className="absolute top-8 right-8 bg-slate-950/70 border border-slate-700 rounded-xl p-2 flex gap-1 backdrop-blur-md">
-        {(["flood", "seismic", "drainage", "heat", "slope", "infrastructure"] as const).map((item) => (
+        {(["flood", "seismic", "drainage", "heat", "slope", "infrastructure", "traffic", "incidents", "power"] as const).map((item) => (
           <button
             key={item}
             onClick={() => onOverlayChange(item)}
@@ -188,6 +258,23 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
           <span>Fire: {Math.round(selectedDistrict.dynamic.fireIntensity)}</span>
           <span>Traffic: {Math.round(selectedDistrict.dynamic.trafficLoad)}</span>
           <span>Power: {Math.round(selectedDistrict.dynamic.powerStability)}</span>
+          <span>
+            Incidents:{" "}
+            {
+              state.incidents.filter(
+                (incident) => incident.districtId === selectedDistrict.id && incident.status !== "resolved"
+              ).length
+            }
+          </span>
+          <span>
+            Hospital load:{" "}
+            {Math.round(
+              state.hospitals
+                .filter((hospital) => hospital.districtId === selectedDistrict.id)
+                .reduce((acc, hospital) => acc + hospital.traumaLoad / Math.max(1, hospital.bedCapacity), 0) * 100
+            ) || 0}
+            %
+          </span>
         </div>
       </div>
 

@@ -10,6 +10,10 @@ interface AIMentorProps {
 export function AIMentor({ state }: AIMentorProps) {
   const selectedDistrict =
     state.districts.find((district) => district.id === state.map.selectedDistrictId) ?? state.districts[0];
+  const highestIncident = state.incidents
+    .filter((incident) => incident.status !== "resolved")
+    .sort((a, b) => b.urgency - a.urgency)[0];
+  const weakestNode = state.infrastructureNodes.slice().sort((a, b) => a.health - b.health)[0];
   const messages = [
     {
       type: "info",
@@ -22,6 +26,13 @@ export function AIMentor({ state }: AIMentorProps) {
         ? "Active disaster detected. Prioritize evacuation routes, triage zones, and critical infrastructure protection."
         : `Analyze ${selectedDistrict.name} overlay data before placing new assets.`,
       icon: state.activeDisaster ? AlertTriangle : Lightbulb,
+    },
+    {
+      type: highestIncident ? "warning" : "info",
+      text: highestIncident
+        ? `${selectedDistrict.name} command forecast: ${highestIncident.hazardType} queue may escalate if dispatch ETA exceeds 8 minutes.`
+        : "No high-priority incidents queued. Continue proactive retrofit scheduling.",
+      icon: AlertTriangle,
     },
   ];
 
@@ -112,6 +123,16 @@ export function AIMentor({ state }: AIMentorProps) {
                 <span className="text-slate-400">District Water:</span>
                 <span className="text-cyan-400 font-semibold">{Math.round(selectedDistrict.dynamic.waterLevel)} / 100</span>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Road Accessibility:</span>
+                <span className="text-amber-400 font-semibold">
+                  {Math.round(
+                    state.roadGraph.edges.reduce((acc, edge) => acc + edge.accessibility, 0) /
+                      Math.max(1, state.roadGraph.edges.length)
+                  )}{" "}
+                  / 100
+                </span>
+              </div>
             </div>
           </motion.div>
 
@@ -141,6 +162,14 @@ export function AIMentor({ state }: AIMentorProps) {
                 <span className="text-emerald-400 mt-0.5">•</span>
                 <span>{state.region.codeGuidance[2] ?? "Integrate drainage channels around high-risk zones"}</span>
               </li>
+              {weakestNode && (
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-400 mt-0.5">•</span>
+                  <span>
+                    Protect {weakestNode.kind} node ({Math.round(weakestNode.health)} health) to avoid cascading outages.
+                  </span>
+                </li>
+              )}
             </ul>
           </motion.div>
         </div>

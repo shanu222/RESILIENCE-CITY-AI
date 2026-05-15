@@ -1,4 +1,4 @@
-import type { DistrictState } from "./types";
+import type { HospitalState, InfrastructureNode, RoadEdge, RoadNode, DistrictState } from "./types";
 
 export const DEFAULT_DISTRICTS: DistrictState[] = [
   {
@@ -96,5 +96,65 @@ export const DEFAULT_DISTRICTS: DistrictState[] = [
     infrastructureCondition: 60,
     hazardExposure: { flood: 28, seismic: 71, drainage: 62, heat: 51, slope: 77, wildfire: 27 },
     dynamic: { waterLevel: 6, smoke: 4, fireIntensity: 3, trafficLoad: 24, powerStability: 69, isolation: 26 },
+  },
+];
+
+export const ROAD_NODES: RoadNode[] = [
+  { id: "n-clifton", districtId: "district-clifton", type: "intersection", position: [24.821, 67.03] },
+  { id: "n-saddar", districtId: "district-saddar", type: "intersection", position: [24.859, 67.002] },
+  { id: "n-korangi", districtId: "district-korangi", type: "intersection", position: [24.827, 67.138] },
+  { id: "n-malir", districtId: "district-malir-river", type: "intersection", position: [24.893, 67.158] },
+  { id: "n-gulshan", districtId: "district-gulshan", type: "intersection", position: [24.923, 67.083] },
+  { id: "n-hills", districtId: "district-hills", type: "intersection", position: [24.956, 67.143] },
+  { id: "n-bridge-coast-river", districtId: "district-malir-river", type: "bridge", position: [24.865, 67.095] },
+  { id: "n-tunnel-hills", districtId: "district-hills", type: "tunnel", position: [24.942, 67.123] },
+  { id: "n-highway-east", districtId: "district-korangi", type: "highway-link", position: [24.846, 67.168] },
+  { id: "n-emergency-core", districtId: "district-saddar", type: "emergency-corridor", position: [24.868, 67.03] },
+];
+
+export const ROAD_EDGES: RoadEdge[] = [
+  { id: "e1", from: "n-clifton", to: "n-saddar", capacity: 85, congestion: 35, floodability: 58, damage: 6, obstruction: 5, accessibility: 86, emergencyPriority: 60 },
+  { id: "e2", from: "n-saddar", to: "n-gulshan", capacity: 94, congestion: 42, floodability: 35, damage: 4, obstruction: 7, accessibility: 88, emergencyPriority: 70 },
+  { id: "e3", from: "n-gulshan", to: "n-malir", capacity: 78, congestion: 39, floodability: 62, damage: 8, obstruction: 11, accessibility: 74, emergencyPriority: 48 },
+  { id: "e4", from: "n-malir", to: "n-korangi", capacity: 70, congestion: 44, floodability: 79, damage: 9, obstruction: 13, accessibility: 65, emergencyPriority: 42 },
+  { id: "e5", from: "n-gulshan", to: "n-hills", capacity: 62, congestion: 28, floodability: 22, damage: 5, obstruction: 8, accessibility: 81, emergencyPriority: 45 },
+  { id: "e6", from: "n-saddar", to: "n-bridge-coast-river", capacity: 66, congestion: 47, floodability: 81, damage: 12, obstruction: 18, accessibility: 62, emergencyPriority: 72 },
+  { id: "e7", from: "n-bridge-coast-river", to: "n-malir", capacity: 64, congestion: 33, floodability: 88, damage: 10, obstruction: 15, accessibility: 59, emergencyPriority: 63 },
+  { id: "e8", from: "n-hills", to: "n-tunnel-hills", capacity: 58, congestion: 21, floodability: 12, damage: 3, obstruction: 6, accessibility: 90, emergencyPriority: 35 },
+  { id: "e9", from: "n-korangi", to: "n-highway-east", capacity: 96, congestion: 56, floodability: 31, damage: 5, obstruction: 9, accessibility: 84, emergencyPriority: 54 },
+  { id: "e10", from: "n-saddar", to: "n-emergency-core", capacity: 74, congestion: 18, floodability: 27, damage: 2, obstruction: 4, accessibility: 95, emergencyPriority: 100 },
+  { id: "e11", from: "n-emergency-core", to: "n-gulshan", capacity: 76, congestion: 22, floodability: 30, damage: 2, obstruction: 5, accessibility: 92, emergencyPriority: 96 },
+];
+
+export const INFRA_NODES: InfrastructureNode[] = [
+  { id: "infra-substation-core", districtId: "district-saddar", kind: "substation", health: 82, active: true, dependencyIds: ["infra-fuel-main"], load: 62 },
+  { id: "infra-bridge-coast-river", districtId: "district-malir-river", kind: "bridge", health: 69, active: true, dependencyIds: ["infra-substation-core"], load: 74 },
+  { id: "infra-water-west", districtId: "district-clifton", kind: "water-plant", health: 77, active: true, dependencyIds: ["infra-substation-core"], load: 58 },
+  { id: "infra-hospital-central", districtId: "district-saddar", kind: "hospital", health: 84, active: true, dependencyIds: ["infra-substation-core", "infra-telecom-central"], load: 71 },
+  { id: "infra-telecom-central", districtId: "district-gulshan", kind: "telecom-tower", health: 80, active: true, dependencyIds: ["infra-substation-core"], load: 64 },
+  { id: "infra-fuel-main", districtId: "district-korangi", kind: "fuel-depot", health: 73, active: true, dependencyIds: [], load: 69 },
+  { id: "infra-pump-river", districtId: "district-malir-river", kind: "drainage-pump", health: 66, active: true, dependencyIds: ["infra-substation-core"], load: 78 },
+];
+
+export const HOSPITALS: HospitalState[] = [
+  {
+    id: "hospital-central",
+    districtId: "district-saddar",
+    name: "Central Trauma Hospital",
+    bedCapacity: 320,
+    traumaLoad: 96,
+    powerStability: 82,
+    medicalSupplies: 77,
+    accessibility: 84,
+  },
+  {
+    id: "hospital-east",
+    districtId: "district-korangi",
+    name: "Eastern Response Medical Center",
+    bedCapacity: 220,
+    traumaLoad: 64,
+    powerStability: 76,
+    medicalSupplies: 68,
+    accessibility: 74,
   },
 ];

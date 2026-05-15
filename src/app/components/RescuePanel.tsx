@@ -1,12 +1,14 @@
 import { motion } from "motion/react";
 import { X, Ambulance, Flame, Plane, LifeBuoy, ShieldAlert } from "lucide-react";
 import { IconButton, Paper } from "@mui/material";
-import type { CitizenState, DistrictState, RescueState } from "../../game/types";
+import type { CitizenState, DistrictState, EmergencyUnit, Incident, RescueState } from "../../game/types";
 
 interface RescuePanelProps {
   rescue: RescueState;
   citizens: CitizenState;
   districts: DistrictState[];
+  incidents: Incident[];
+  emergencyUnits: EmergencyUnit[];
   activeDisasterType: string | null;
   onRunOperation: (operation: "usar" | "triage" | "evacuate" | "airlift" | "fireline") => void;
   onClose: () => void;
@@ -16,6 +18,8 @@ export function RescuePanel({
   rescue,
   citizens,
   districts,
+  incidents,
+  emergencyUnits,
   activeDisasterType,
   onRunOperation,
   onClose,
@@ -99,6 +103,36 @@ export function RescuePanel({
                     </span>
                   </div>
                 ))}
+            </div>
+          </div>
+          <div className="bg-slate-900/65 border border-slate-700 rounded-xl p-3 mb-3">
+            <p className="text-xs text-slate-300 mb-2">Dispatch queue</p>
+            <div className="space-y-1 max-h-20 overflow-y-auto">
+              {incidents
+                .filter((incident) => incident.status !== "resolved")
+                .sort((a, b) => b.urgency - a.urgency)
+                .slice(0, 4)
+                .map((incident) => (
+                  <div key={incident.id} className="flex items-center justify-between text-xs text-slate-200">
+                    <span>{incident.hazardType}</span>
+                    <span>
+                      sev {Math.round(incident.severity)} | {incident.status}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+          <div className="bg-slate-900/65 border border-slate-700 rounded-xl p-3">
+            <p className="text-xs text-slate-300 mb-2">Unit telemetry</p>
+            <div className="space-y-1 max-h-20 overflow-y-auto">
+              {emergencyUnits.slice(0, 5).map((unit) => (
+                <div key={unit.id} className="flex items-center justify-between text-xs text-slate-200">
+                  <span>{unit.type}</span>
+                  <span>
+                    {unit.status} | ETA {unit.etaMinutes ?? "-"}m
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -1,14 +1,17 @@
 import { BUILDING_TEMPLATES, CAMPAIGN_MISSIONS, getRegionById } from "./data";
-import { DEFAULT_DISTRICTS } from "./map-data";
+import { DEFAULT_DISTRICTS, HOSPITALS, INFRA_NODES, ROAD_EDGES, ROAD_NODES } from "./map-data";
 import type {
   ActiveDisaster,
   BuildingBlueprint,
   BuildingInstance,
   DisasterType,
+  EmergencyUnit,
   GameState,
   HazardOverlay,
+  Incident,
   Mission,
   RegionId,
+  RoadEdge,
 } from "./types";
 
 const SAVE_VERSION = 2;
@@ -103,6 +106,114 @@ function createCitizenAgents(count: number): GameState["citizenAgents"] {
       trapped: false,
     };
   });
+}
+
+function createEmergencyUnits(): EmergencyUnit[] {
+  return [
+    { id: uid("unit"), type: "ambulance", districtId: "district-saddar", fuel: 84, fatigue: 12, capacity: 4, speed: 68, readiness: 82, damageExposure: 8, status: "idle" },
+    { id: uid("unit"), type: "fire-brigade", districtId: "district-korangi", fuel: 74, fatigue: 16, capacity: 8, speed: 56, readiness: 79, damageExposure: 14, status: "idle" },
+    { id: uid("unit"), type: "engineering-inspector", districtId: "district-gulshan", fuel: 77, fatigue: 9, capacity: 3, speed: 52, readiness: 85, damageExposure: 9, status: "idle" },
+    { id: uid("unit"), type: "heavy-rescue", districtId: "district-malir-river", fuel: 72, fatigue: 19, capacity: 10, speed: 42, readiness: 75, damageExposure: 18, status: "idle" },
+    { id: uid("unit"), type: "drone", districtId: "district-saddar", fuel: 92, fatigue: 8, capacity: 1, speed: 82, readiness: 89, damageExposure: 6, status: "idle" },
+    { id: uid("unit"), type: "helicopter", districtId: "district-clifton", fuel: 68, fatigue: 22, capacity: 6, speed: 91, readiness: 73, damageExposure: 20, status: "idle" },
+    { id: uid("unit"), type: "police", districtId: "district-saddar", fuel: 81, fatigue: 14, capacity: 6, speed: 64, readiness: 83, damageExposure: 10, status: "idle" },
+    { id: uid("unit"), type: "evacuation-bus", districtId: "district-gulshan", fuel: 79, fatigue: 12, capacity: 30, speed: 46, readiness: 78, damageExposure: 12, status: "idle" },
+  ];
+}
+
+function buildAdjacency(edges: RoadEdge[]): Map<string, RoadEdge[]> {
+  const map = new Map<string, RoadEdge[]>();
+  for (const edge of edges) {
+    const existingFrom = map.get(edge.from) ?? [];
+    existingFrom.push(edge);
+    map.set(edge.from, existingFrom);
+    const reverse: RoadEdge = { ...edge, id: `${edge.id}-rev`, from: edge.to, to: edge.from };
+    const existingTo = map.get(edge.to) ?? [];
+    existingTo.push(reverse);
+    map.set(edge.to, existingTo);
+  }
+  return map;
+}
+
+function edgeTravelCost(edge: RoadEdge, weatherPenalty: number): number {
+  const blocked = edge.accessibility <= 5 || edge.obstruction > 90 || edge.damage > 92;
+  if (blocked) return Number.POSITIVE_INFINITY;
+  const congestionPenalty = edge.congestion * 0.06;
+  const floodPenalty = edge.floodability * 0.04;
+  const damagePenalty = edge.damage * 0.07;
+  const obstructionPenalty = edge.obstruction * 0.05;
+  const accessibilityFactor = (100 - edge.accessibility) * 0.04;
+  return 1 + congestionPenalty + floodPenalty + damagePenalty + obstructionPenalty + accessibilityFactor + weatherPenalty;
+}
+
+function findDistrictNode(districtId: string): string {
+  return ROAD_NODES.find((node) => node.districtId === districtId)?.id ?? ROAD_NODES[0].id;
+}
+
+function estimateRoute(
+  roadGraph: GameState["roadGraph"],
+  fromDistrictId: string,
+  toDistrictId: string,
+  weatherPenalty: number
+): { etaMinutes: number; traversedEdgeIds: string[] } {
+  const start = findDistrictNode(fromDistrictId);
+  const target = findDistrictNode(toDistrictId);
+  const adjacency = buildAdjacency(roadGraph.edges);
+  const open = new Set<string>([start]);
+  const dist = new Map<string, number>([[start, 0]]);
+  const prev = new Map<string, { node: string; edgeId: string }>();
+  const heuristic = (nodeId: string) => {
+    const node = ROAD_NODES.find((item) => item.id === nodeId);
+    const goal = ROAD_NODES.find((item) => item.id === target);
+    if (!node || !goal) return 0;
+    const lat = node.position[0] - goal.position[0];
+    const lon = node.position[1] - goal.position[1];
+    return Math.sqrt(lat * lat + lon * lon) * 120;
+  };
+
+  while (open.size > 0) {
+    let current = "";
+    let minScore = Number.POSITIVE_INFINITY;
+    for (const nodeId of open) {
+      const score = (dist.get(nodeId) ?? Number.POSITIVE_INFINITY) + heuristic(nodeId);
+      if (score < minScore) {
+        minScore = score;
+        current = nodeId;
+      }
+    }
+    if (!current) break;
+    if (current === target) break;
+    open.delete(current);
+    const neighbors = adjacency.get(current) ?? [];
+    for (const edge of neighbors) {
+      const cost = edgeTravelCost(edge, weatherPenalty);
+      if (!Number.isFinite(cost)) continue;
+      const tentative = (dist.get(current) ?? Number.POSITIVE_INFINITY) + cost;
+      if (tentative < (dist.get(edge.to) ?? Number.POSITIVE_INFINITY)) {
+        dist.set(edge.to, tentative);
+        prev.set(edge.to, { node: current, edgeId: edge.id.replace("-rev", "") });
+        open.add(edge.to);
+      }
+    }
+  }
+
+  if (!dist.has(target)) {
+    return { etaMinutes: 999, traversedEdgeIds: [] };
+  }
+  const traversedEdgeIds: string[] = [];
+  let cursor = target;
+  while (cursor !== start) {
+    const info = prev.get(cursor);
+    if (!info) break;
+    traversedEdgeIds.push(info.edgeId);
+    cursor = info.node;
+  }
+  traversedEdgeIds.reverse();
+  return { etaMinutes: Math.round((dist.get(target) ?? 999) * 2.8), traversedEdgeIds };
+}
+
+function districtCenterNodeDistrictId(nodeId: string): string {
+  return ROAD_NODES.find((node) => node.id === nodeId)?.districtId ?? DEFAULT_DISTRICTS[0].id;
 }
 
 function createBuilding(
@@ -279,6 +390,8 @@ export function createInitialState(): GameState {
       teamsDeployed: 0,
       blockedRoutes: 1,
       unitReadiness: 71,
+      mutualAidRequests: 0,
+      responseEscalationLevel: 1,
     },
     economy: {
       taxesPerTick: 5000,
@@ -290,6 +403,22 @@ export function createInitialState(): GameState {
       waterSystemHealth: 71,
       roadHealth: 69,
     },
+    resources: {
+      fuel: 80,
+      medicalSupplies: 72,
+      rescueEquipment: 68,
+      food: 76,
+      water: 74,
+      temporaryShelters: 44,
+    },
+    hospitals: HOSPITALS,
+    infrastructureNodes: INFRA_NODES,
+    roadGraph: {
+      nodes: ROAD_NODES,
+      edges: ROAD_EDGES,
+    },
+    incidents: [],
+    emergencyUnits: createEmergencyUnits(),
     learning: {
       engineeringXP: 0,
       skillLevel: 1,
@@ -384,6 +513,91 @@ function withTick(state: GameState): GameState {
     };
   });
 
+  const districtById = new Map(districts.map((district) => [district.id, district]));
+  const roadGraph = {
+    ...state.roadGraph,
+    edges: state.roadGraph.edges.map((edge) => {
+      const fromDistrict = districtById.get(districtCenterNodeDistrictId(edge.from));
+      const toDistrict = districtById.get(districtCenterNodeDistrictId(edge.to));
+      const flood = ((fromDistrict?.dynamic.waterLevel ?? 0) + (toDistrict?.dynamic.waterLevel ?? 0)) / 2;
+      const fire = ((fromDistrict?.dynamic.fireIntensity ?? 0) + (toDistrict?.dynamic.fireIntensity ?? 0)) / 2;
+      const traffic = ((fromDistrict?.dynamic.trafficLoad ?? 0) + (toDistrict?.dynamic.trafficLoad ?? 0)) / 2;
+      const bridgeBoost = edge.id.includes("e6") || edge.id.includes("e7") ? 1.4 : 1;
+      const disasterPenalty = activeDisaster
+        ? activeDisaster.type === "flood" || activeDisaster.type === "storm_surge" || activeDisaster.type === "urban_flooding"
+          ? 1.2
+          : activeDisaster.type === "wildfire"
+          ? 0.9
+          : activeDisaster.type === "earthquake"
+          ? 1.1
+          : 0.7
+        : -0.35;
+      const obstruction = clamp(edge.obstruction + flood * 0.08 + fire * 0.07 + disasterPenalty, 0, 100);
+      const damage = clamp(edge.damage + flood * 0.05 + (activeDisaster?.type === "earthquake" ? disasterImpact * 0.24 : 0) + (edge.id.includes("e6") || edge.id.includes("e7") ? disasterImpact * 0.12 : 0), 0, 100);
+      const congestion = clamp(edge.congestion + traffic * 0.06 + (activeDisaster ? 0.9 : -0.4), 0, 100);
+      const accessibility = clamp(
+        edge.accessibility -
+          obstruction * 0.05 * bridgeBoost -
+          damage * 0.04 * bridgeBoost -
+          (climate.weather === "storm" ? 0.4 : 0),
+        0,
+        100
+      );
+      return {
+        ...edge,
+        obstruction,
+        damage,
+        congestion,
+        accessibility,
+      };
+    }),
+  };
+
+  const infrastructureNodes = state.infrastructureNodes.map((node) => {
+    const district = districtById.get(node.districtId);
+    const dependencyHealth =
+      node.dependencyIds.length === 0
+        ? 100
+        : node.dependencyIds
+            .map((dependencyId) => state.infrastructureNodes.find((item) => item.id === dependencyId)?.health ?? 60)
+            .reduce((acc, value) => acc + value, 0) / node.dependencyIds.length;
+    const hazardStress =
+      (district?.dynamic.waterLevel ?? 0) * (node.kind === "drainage-pump" ? 0.08 : 0.04) +
+      (district?.dynamic.fireIntensity ?? 0) * (node.kind === "fuel-depot" ? 0.09 : 0.03) +
+      (activeDisaster?.type === "earthquake" && (node.kind === "bridge" || node.kind === "substation") ? disasterImpact * 0.5 : 0) +
+      (climate.weather === "storm" && node.kind === "telecom-tower" ? 0.6 : 0);
+    const load = clamp(node.load + (district?.dynamic.trafficLoad ?? 0) * 0.03 + (activeDisaster ? 1 : -0.2), 0, 120);
+    const health = clamp(node.health - hazardStress - load * 0.01 + dependencyHealth * 0.003, 0, 100);
+    return {
+      ...node,
+      load,
+      health,
+      active: health > 20 && dependencyHealth > 18,
+    };
+  });
+
+  const hospitals = state.hospitals.map((hospital) => {
+    const district = districtById.get(hospital.districtId);
+    const infraPower = infrastructureNodes.find((node) => node.kind === "substation")?.health ?? 60;
+    const traumaLoad = clamp(
+      hospital.traumaLoad + (district?.dynamic.fireIntensity ?? 0) * 0.04 + (district?.dynamic.waterLevel ?? 0) * 0.03 + disasterImpact * 0.2 - state.rescue.triageEfficiency * 0.02,
+      0,
+      hospital.bedCapacity * 1.7
+    );
+    const accessibility = clamp(
+      hospital.accessibility - (district?.dynamic.isolation ?? 0) * 0.05 - (100 - state.economy.roadHealth) * 0.03,
+      0,
+      100
+    );
+    return {
+      ...hospital,
+      traumaLoad,
+      accessibility,
+      powerStability: clamp((hospital.powerStability + infraPower * 0.2) / 1.2 - (activeDisaster ? 0.7 : -0.1), 0, 100),
+      medicalSupplies: clamp(hospital.medicalSupplies - traumaLoad * 0.003 + state.resources.medicalSupplies * 0.01, 0, 100),
+    };
+  });
+
   const buildingDistrictMap = new Map(districts.map((district) => [district.id, district]));
   const buildings = state.buildings.map((building) => {
     const district = buildingDistrictMap.get(building.districtId);
@@ -439,6 +653,110 @@ function withTick(state: GameState): GameState {
   const citizens = summarizeCitizens(state, agents);
   climate.weather = weatherByClimate({ ...state, climate, citizens } as GameState);
 
+  const incidentCandidates: Incident[] = districts
+    .map((district) => {
+      const severity = Math.round(
+        district.dynamic.waterLevel * 0.28 +
+          district.dynamic.fireIntensity * 0.26 +
+          district.dynamic.smoke * 0.16 +
+          district.dynamic.isolation * 0.22 +
+          (activeDisaster ? activeDisaster.intensity * 3.5 : 0)
+      );
+      if (severity < 48) return null;
+      return {
+        id: uid("inc"),
+        districtId: district.id,
+        hazardType:
+          district.dynamic.fireIntensity > 55
+            ? "wildfire"
+            : district.dynamic.waterLevel > 55
+            ? "flood"
+            : district.dynamic.smoke > 60
+            ? "smog"
+            : "infrastructure",
+        severity,
+        casualties: Math.round((district.populationDensity * severity) / 290),
+        accessibility: Math.round(100 - district.dynamic.isolation),
+        urgency: Math.round(severity * 0.8 + district.dynamic.trafficLoad * 0.25),
+        infrastructureImpact: Math.round((100 - district.infrastructureCondition) * 0.9),
+        status: "queued",
+        createdTick: state.tick + 1,
+      } as Incident;
+    })
+    .filter((item): item is Incident => Boolean(item))
+    .slice(0, 2);
+
+  const activeIncidents = state.incidents
+    .map((incident) => {
+      const district = districtById.get(incident.districtId);
+      const nextSeverity = clamp(
+        incident.severity + (district ? (district.dynamic.waterLevel + district.dynamic.fireIntensity) * 0.01 : 0) - (state.rescue.activeOperation ? 0.8 : 0.1),
+        0,
+        100
+      );
+      const resolved = nextSeverity < 18 || (incident.status === "dispatched" && nextSeverity < 28);
+      return {
+        ...incident,
+        severity: nextSeverity,
+        status: resolved ? "resolved" : incident.status,
+      };
+    })
+    .filter((incident) => incident.status !== "resolved")
+    .slice(-10);
+
+  const incidents = [...activeIncidents, ...incidentCandidates].slice(-12);
+  const weatherPenalty = climate.weather === "storm" ? 2.4 : climate.weather === "fog" ? 1.3 : climate.weather === "heatwave" ? 0.6 : 0.2;
+  const queuedIncidents = incidents
+    .filter((incident) => incident.status === "queued")
+    .sort((a, b) => b.urgency - a.urgency);
+  const queuedIncidentCount = queuedIncidents.length;
+  const dispatchQueue = [...queuedIncidents];
+  const emergencyUnits = state.emergencyUnits.map((unit) => {
+    if (unit.status === "maintenance") {
+      return {
+        ...unit,
+        fuel: clamp(unit.fuel + 1.2, 0, 100),
+        fatigue: clamp(unit.fatigue - 1.4, 0, 100),
+        readiness: clamp(unit.readiness + 0.8, 0, 100),
+        status: unit.readiness > 72 ? "idle" : "maintenance",
+      };
+    }
+    let assignedIncidentId = unit.assignedIncidentId;
+    let etaMinutes = unit.etaMinutes;
+    let status = unit.status;
+    if ((!assignedIncidentId || !incidents.some((incident) => incident.id === assignedIncidentId)) && dispatchQueue.length > 0 && unit.readiness > 45) {
+      const target = dispatchQueue.shift()!;
+      const route = estimateRoute(roadGraph, unit.districtId, target.districtId, weatherPenalty);
+      assignedIncidentId = target.id;
+      etaMinutes = route.etaMinutes;
+      status = "en-route";
+    } else if (status === "en-route" && etaMinutes !== undefined) {
+      etaMinutes = clamp(etaMinutes - (unit.speed / 22) * (state.economy.roadHealth / 100), 0, 999);
+      status = etaMinutes <= 0 ? "operating" : "en-route";
+    } else if (status === "operating") {
+      const done = Math.random() < 0.18;
+      if (done) {
+        status = "idle";
+        assignedIncidentId = undefined;
+        etaMinutes = undefined;
+      }
+    }
+    return {
+      ...unit,
+      assignedIncidentId,
+      etaMinutes,
+      status,
+      fuel: clamp(unit.fuel - (status === "idle" ? 0.08 : 0.7), 0, 100),
+      fatigue: clamp(unit.fatigue + (status === "idle" ? -0.3 : 0.75), 0, 100),
+      readiness: clamp(unit.readiness + (status === "idle" ? 0.4 : -0.5), 0, 100),
+      damageExposure: clamp(unit.damageExposure + (status === "operating" ? 0.6 : 0.1), 0, 100),
+      districtId:
+        status === "operating" && assignedIncidentId
+          ? incidents.find((incident) => incident.id === assignedIncidentId)?.districtId ?? unit.districtId
+          : unit.districtId,
+    };
+  });
+
   const maintenanceCost = Math.round(1200 + buildings.length * 460 + (state.learning.professionalMode ? 900 : 0));
   const repairCost = Math.round(buildings.filter((building) => building.condition < 45).length * 2800 + districts.filter((district) => district.infrastructureCondition < 55).length * 1900);
   const taxes = Math.round(citizens.safe * 0.65);
@@ -452,6 +770,14 @@ function withTick(state: GameState): GameState {
     powerGridHealth: clamp(state.economy.powerGridHealth - (activeDisaster ? 0.7 : -0.06), 0, 100),
     waterSystemHealth: clamp(state.economy.waterSystemHealth - (climate.rainfallMm > 900 ? 0.45 : -0.06), 0, 100),
     roadHealth: clamp(state.economy.roadHealth - districts.reduce((acc, district) => acc + district.dynamic.isolation, 0) / 2400, 0, 100),
+  };
+  const resources = {
+    fuel: clamp(state.resources.fuel - emergencyUnits.filter((unit) => unit.status !== "idle").length * 0.5 + (state.economy.taxesPerTick > 4500 ? 0.2 : 0), 0, 100),
+    medicalSupplies: clamp(state.resources.medicalSupplies - hospitals.reduce((acc, hospital) => acc + hospital.traumaLoad, 0) / 2000 + 0.12, 0, 100),
+    rescueEquipment: clamp(state.resources.rescueEquipment - (activeDisaster ? 0.35 : -0.08), 0, 100),
+    food: clamp(state.resources.food - citizens.displaced / 2400 + 0.08, 0, 100),
+    water: clamp(state.resources.water - climate.temperatureC * 0.01 - districts.reduce((acc, district) => acc + district.dynamic.waterLevel, 0) / 12000 + 0.1, 0, 100),
+    temporaryShelters: clamp(state.resources.temporaryShelters + (citizens.displaced > 120 ? 0.7 : -0.25), 0, 100),
   };
   const budget = Math.round(clamp(state.budget + taxes - maintenanceCost - repairCost - (activeDisaster ? 8000 : 1200), -8_000_000, 30_000_000));
 
@@ -483,6 +809,12 @@ function withTick(state: GameState): GameState {
     activeDisaster,
     climate,
     districts,
+    roadGraph,
+    infrastructureNodes,
+    hospitals,
+    resources,
+    incidents,
+    emergencyUnits,
     buildings,
     citizenAgents: agents,
     citizens,
@@ -504,8 +836,14 @@ function withTick(state: GameState): GameState {
       triageEfficiency: clamp(state.rescue.triageEfficiency + (state.rescue.activeOperation ? 0.09 : 0.03), 0, 100),
       resourceFuel: clamp(state.rescue.resourceFuel - (state.rescue.activeOperation ? 0.6 : -0.1), 0, 100),
       commandLatency: clamp(state.rescue.commandLatency + (activeDisaster ? 0.3 : -0.2), 5, 90),
-      blockedRoutes: Math.round(clamp(districts.reduce((acc, district) => acc + district.dynamic.isolation, 0) / 90, 0, 20)),
+      blockedRoutes: Math.round(clamp(roadGraph.edges.filter((edge) => edge.accessibility < 25).length + districts.reduce((acc, district) => acc + district.dynamic.isolation, 0) / 120, 0, 40)),
       unitReadiness: clamp(state.rescue.unitReadiness + (state.rescue.resourceFuel > 30 ? 0.08 : -0.4), 0, 100),
+      mutualAidRequests: clamp(state.rescue.mutualAidRequests + (queuedIncidentCount > 1 ? 0.6 : -0.2), 0, 30),
+      responseEscalationLevel: clamp(
+        Math.round((incidents.filter((incident) => incident.severity > 70).length + (activeDisaster ? activeDisaster.intensity / 2 : 0)) / 2 + 1),
+        1,
+        5
+      ),
     },
     warnings,
     mentorLog: appendLog(
@@ -609,13 +947,66 @@ function withDisaster(state: GameState, disaster: DisasterType, intensity: numbe
     }
     return district;
   });
+  const roadGraph = {
+    ...state.roadGraph,
+    edges: state.roadGraph.edges.map((edge) => ({
+      ...edge,
+      obstruction: clamp(edge.obstruction + normalized * (disaster === "flood" || disaster === "wildfire" ? 5.2 : 3.5), 0, 100),
+      damage: clamp(edge.damage + normalized * (disaster === "earthquake" || disaster === "landslide" ? 4.7 : 2.2), 0, 100),
+      accessibility: clamp(edge.accessibility - normalized * 2.1, 0, 100),
+    })),
+  };
+  const infrastructureNodes = state.infrastructureNodes.map((node) => ({
+    ...node,
+    health: clamp(
+      node.health -
+        normalized *
+          (disaster === "earthquake" && (node.kind === "bridge" || node.kind === "substation")
+            ? 5.2
+            : disaster === "flood" && node.kind === "drainage-pump"
+            ? 6.3
+            : disaster === "wildfire" && node.kind === "fuel-depot"
+            ? 6.8
+            : 2.6),
+      0,
+      100
+    ),
+  }));
+  const incidents = [
+    ...state.incidents,
+    {
+      id: uid("inc"),
+      districtId: state.map.selectedDistrictId,
+      hazardType: disaster,
+      severity: Math.round(normalized * 9.5),
+      casualties: Math.round(normalized * 11),
+      accessibility: 58,
+      urgency: Math.round(normalized * 10),
+      infrastructureImpact: Math.round(normalized * 8.5),
+      status: "queued" as const,
+      createdTick: state.tick,
+    },
+  ].slice(-12);
   return {
     ...state,
     activeDisaster: event,
     districts,
+    roadGraph,
+    infrastructureNodes,
+    incidents,
+    resources: {
+      ...state.resources,
+      fuel: clamp(state.resources.fuel - normalized * 0.8, 0, 100),
+      medicalSupplies: clamp(state.resources.medicalSupplies - normalized * 0.9, 0, 100),
+    },
     warnings: [`${disaster.toUpperCase()} initiated at intensity ${normalized}.`, ...state.warnings].slice(0, 6),
     mentorLog: appendLog(state, `Incident Command activated for ${disaster}. Dispatch and route controls are now critical.`),
-    rescue: { ...state.rescue, activeOperation: true, teamsDeployed: clamp(state.rescue.teamsDeployed + 2, 0, 24) },
+    rescue: {
+      ...state.rescue,
+      activeOperation: true,
+      teamsDeployed: clamp(state.rescue.teamsDeployed + 2, 0, 24),
+      responseEscalationLevel: clamp(state.rescue.responseEscalationLevel + 1, 1, 5),
+    },
   };
 }
 
@@ -631,6 +1022,9 @@ function withRescueOperation(
     fireline: { panic: -7, health: 1.1, budget: -110000, trust: 2.8, log: "Fireline containment created to reduce spread." },
   } as const;
   const selected = effects[operation];
+  const targetIncident = state.incidents
+    .filter((incident) => incident.status === "queued")
+    .sort((a, b) => b.urgency - a.urgency)[0];
   const agents = state.citizenAgents.map((agent, index) =>
     index % 7 === 0
       ? {
@@ -643,16 +1037,46 @@ function withRescueOperation(
         }
       : agent
   );
+  const incidents = state.incidents.map((incident) =>
+    incident.id === targetIncident?.id
+      ? {
+          ...incident,
+          status: "dispatched",
+          severity: clamp(incident.severity - 8, 0, 100),
+          casualties: Math.max(0, incident.casualties - Math.round(selected.health * 2)),
+        }
+      : incident
+  );
+  const emergencyUnits = state.emergencyUnits.map((unit, index) => {
+    if (index % 3 !== 0 || !targetIncident) return unit;
+    return {
+      ...unit,
+      assignedIncidentId: targetIncident.id,
+      status: "en-route",
+      etaMinutes: Math.max(4, Math.round(18 - unit.speed * 0.08 + state.rescue.blockedRoutes * 0.4)),
+      fuel: clamp(unit.fuel - 4.2, 0, 100),
+      fatigue: clamp(unit.fatigue + 2.6, 0, 100),
+    };
+  });
   return {
     ...state,
     citizenAgents: agents,
+    incidents,
+    emergencyUnits,
     budget: state.budget + selected.budget,
+    resources: {
+      ...state.resources,
+      fuel: clamp(state.resources.fuel - 1.5, 0, 100),
+      medicalSupplies: clamp(state.resources.medicalSupplies - (operation === "triage" ? 1.6 : 0.7), 0, 100),
+      rescueEquipment: clamp(state.resources.rescueEquipment - 0.8, 0, 100),
+    },
     rescue: {
       ...state.rescue,
       activeOperation: true,
       teamsDeployed: clamp(state.rescue.teamsDeployed + 1, 0, 24),
       triageEfficiency: clamp(state.rescue.triageEfficiency + 3.5, 0, 100),
       commandLatency: clamp(state.rescue.commandLatency - 1.2, 5, 90),
+      mutualAidRequests: clamp(state.rescue.mutualAidRequests + (state.incidents.filter((i) => i.status === "queued").length > 3 ? 1 : 0), 0, 30),
     },
     mentorLog: appendLog(state, selected.log),
   };
