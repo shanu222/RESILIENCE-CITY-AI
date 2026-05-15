@@ -1,28 +1,36 @@
-import { motion } from 'motion/react';
-import { Brain, Lightbulb, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Paper, IconButton } from '@mui/material';
-import { useState } from 'react';
+import { motion } from "motion/react";
+import { Brain, Lightbulb, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Paper } from "@mui/material";
+import type { GameState } from "../../game/types";
 
-export function AIMentor() {
-  const [messages] = useState([
+interface AIMentorProps {
+  state: GameState;
+}
+
+export function AIMentor({ state }: AIMentorProps) {
+  const selectedDistrict =
+    state.districts.find((district) => district.id === state.map.selectedDistrictId) ?? state.districts[0];
+  const messages = [
     {
-      type: 'info',
-      text: 'Welcome to Resilience City AI. I will guide you through building climate-resilient infrastructure.',
+      type: "info",
+      text: state.mentorLog[0] ?? "Welcome. Start by mapping hazard exposure before construction.",
       icon: Brain,
     },
     {
-      type: 'tip',
-      text: 'This area has high seismic activity. Consider reinforced concrete frames with moment-resisting connections.',
-      icon: Lightbulb,
+      type: state.activeDisaster ? "warning" : "tip",
+      text: state.activeDisaster
+        ? "Active disaster detected. Prioritize evacuation routes, triage zones, and critical infrastructure protection."
+        : `Analyze ${selectedDistrict.name} overlay data before placing new assets.`,
+      icon: state.activeDisaster ? AlertTriangle : Lightbulb,
     },
-  ]);
+  ];
 
   return (
     <motion.div
       initial={{ x: -400, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ delay: 0.5, duration: 0.6 }}
-      className="absolute left-6 bottom-6 w-96 z-20"
+      className="absolute left-3 md:left-6 bottom-6 w-[min(92vw,24rem)] z-20"
     >
       <Paper
         elevation={8}
@@ -50,10 +58,10 @@ export function AIMentor() {
           {messages.map((message, i) => {
             const Icon = message.icon;
             const colors = {
-              info: 'bg-blue-500/20 border-blue-500/40 text-blue-200',
-              tip: 'bg-yellow-500/20 border-yellow-500/40 text-yellow-200',
-              warning: 'bg-red-500/20 border-red-500/40 text-red-200',
-              success: 'bg-green-500/20 border-green-500/40 text-green-200',
+              info: "bg-blue-500/20 border-blue-500/40 text-blue-200",
+              tip: "bg-yellow-500/20 border-yellow-500/40 text-yellow-200",
+              warning: "bg-red-500/20 border-red-500/40 text-red-200",
+              success: "bg-green-500/20 border-green-500/40 text-green-200",
             };
 
             return (
@@ -86,19 +94,23 @@ export function AIMentor() {
             <div className="space-y-2 text-xs">
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">Earthquake Risk:</span>
-                <span className="text-red-400 font-semibold">High (Zone 4)</span>
+                <span className="text-red-400 font-semibold">{Math.round(state.region.seismicRisk * 100)} / 100</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400">Flood Risk:</span>
-                <span className="text-yellow-400 font-semibold">Moderate</span>
+                <span className="text-yellow-400 font-semibold">{Math.round(state.region.floodRisk * 100)} / 100</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-400">Soil Type:</span>
-                <span className="text-blue-400 font-semibold">Clay</span>
+                <span className="text-slate-400">Drought Risk:</span>
+                <span className="text-blue-400 font-semibold">{Math.round(state.region.droughtRisk * 100)} / 100</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-400">Wind Speed:</span>
-                <span className="text-green-400 font-semibold">Low</span>
+                <span className="text-slate-400">Wind Exposure:</span>
+                <span className="text-green-400 font-semibold">{Math.round(state.region.windRisk * 100)} / 100</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">District Water:</span>
+                <span className="text-cyan-400 font-semibold">{Math.round(selectedDistrict.dynamic.waterLevel)} / 100</span>
               </div>
             </div>
           </motion.div>
@@ -117,15 +129,17 @@ export function AIMentor() {
             <ul className="space-y-2 text-xs text-emerald-100">
               <li className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">•</span>
-                <span>Use reinforced concrete with steel moment frames</span>
+                <span>
+                  {state.region.codeGuidance[0] ?? "Use reinforced framing and avoid weak soft-story configurations"}
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">•</span>
-                <span>Elevate structures 3ft above ground level</span>
+                <span>{state.region.codeGuidance[1] ?? "Elevate vulnerable structures in flood pathways"}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">•</span>
-                <span>Install drainage channels around perimeter</span>
+                <span>{state.region.codeGuidance[2] ?? "Integrate drainage channels around high-risk zones"}</span>
               </li>
             </ul>
           </motion.div>
@@ -133,13 +147,13 @@ export function AIMentor() {
 
         {/* Quick Actions */}
         <div className="px-4 py-3 border-t border-slate-700 bg-slate-900/50">
-          <div className="flex gap-2">
-            <button className="flex-1 px-3 py-2 text-xs font-medium text-blue-300 hover:bg-blue-600/20 rounded-lg transition-colors">
-              Explain More
-            </button>
-            <button className="flex-1 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-600/20 rounded-lg transition-colors">
-              Show Example
-            </button>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-slate-800/60 rounded-lg px-3 py-2 text-slate-300">
+              Resilience: <span className="text-emerald-300">{Math.round(state.resilienceScore)}</span>
+            </div>
+            <div className="bg-slate-800/60 rounded-lg px-3 py-2 text-slate-300">
+              Risk: <span className="text-orange-300">{Math.round(state.riskScore)}</span>
+            </div>
           </div>
         </div>
       </Paper>

@@ -1,12 +1,13 @@
-import { motion } from 'motion/react';
-import { Play, BookOpen, Users, Globe, Settings } from 'lucide-react';
-import { Button } from '@mui/material';
+import { motion } from "motion/react";
+import { Play, BookOpen, Users, Globe, Settings } from "lucide-react";
+import { Button } from "@mui/material";
 
 interface MainMenuProps {
-  onStart: () => void;
+  onStartCampaign: () => void;
+  onStartSandbox: () => void;
 }
 
-export function MainMenu({ onStart }: MainMenuProps) {
+export function MainMenu({ onStartCampaign, onStartSandbox }: MainMenuProps) {
   return (
     <div className="relative size-full flex items-center justify-center overflow-hidden">
       {/* Animated background */}
@@ -61,7 +62,7 @@ export function MainMenu({ onStart }: MainMenuProps) {
           className="flex flex-col items-center gap-4 mb-8"
         >
           <Button
-            onClick={onStart}
+            onClick={onStartCampaign}
             variant="contained"
             size="large"
             startIcon={<Play />}
@@ -82,7 +83,27 @@ export function MainMenu({ onStart }: MainMenuProps) {
               minWidth: 300,
             }}
           >
-            Start Mission
+            Start Campaign
+          </Button>
+          <Button
+            onClick={onStartSandbox}
+            variant="outlined"
+            size="large"
+            sx={{
+              px: 6,
+              py: 1.5,
+              fontSize: "1rem",
+              color: "#cbd5e1",
+              borderColor: "rgba(148, 163, 184, 0.5)",
+              textTransform: "none",
+              minWidth: 300,
+              "&:hover": {
+                borderColor: "rgba(148, 163, 184, 0.8)",
+                backgroundColor: "rgba(30, 41, 59, 0.4)",
+              },
+            }}
+          >
+            Enter Sandbox Mode
           </Button>
 
           <div className="flex gap-4 mt-4">

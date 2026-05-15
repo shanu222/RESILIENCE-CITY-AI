@@ -1,23 +1,34 @@
-import { Target, Hammer, Cloud, Brain, Map, BarChart3 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Target, Hammer, Cloud, Brain, Map, BarChart3, LifeBuoy, Sun, Users } from "lucide-react";
+import { motion } from "motion/react";
 
 interface ControlPanelProps {
-  activePanel: 'missions' | 'build' | 'disasters' | null;
-  onPanelChange: (panel: 'missions' | 'build' | 'disasters' | null) => void;
+  activePanel: "missions" | "build" | "disasters" | "rescue" | "climate" | "regions" | null;
+  onPanelChange: (
+    panel: "missions" | "build" | "disasters" | "rescue" | "climate" | "regions" | null
+  ) => void;
   onToggleMentor: () => void;
+  onToggleMultiplayer: () => void;
 }
 
-export function ControlPanel({ activePanel, onPanelChange, onToggleMentor }: ControlPanelProps) {
+export function ControlPanel({
+  activePanel,
+  onPanelChange,
+  onToggleMentor,
+  onToggleMultiplayer,
+}: ControlPanelProps) {
   const tools = [
-    { id: 'missions' as const, icon: Target, label: 'Missions', color: 'from-blue-500 to-blue-600' },
-    { id: 'build' as const, icon: Hammer, label: 'Build', color: 'from-emerald-500 to-emerald-600' },
-    { id: 'disasters' as const, icon: Cloud, label: 'Disasters', color: 'from-orange-500 to-orange-600' },
+    { id: "missions" as const, icon: Target, label: "Missions", color: "from-blue-500 to-blue-600" },
+    { id: "build" as const, icon: Hammer, label: "Build", color: "from-emerald-500 to-emerald-600" },
+    { id: "disasters" as const, icon: Cloud, label: "Disasters", color: "from-orange-500 to-orange-600" },
+    { id: "rescue" as const, icon: LifeBuoy, label: "Rescue", color: "from-rose-500 to-red-600" },
+    { id: "climate" as const, icon: Sun, label: "Climate", color: "from-cyan-500 to-sky-600" },
+    { id: "regions" as const, icon: Map, label: "Regions", color: "from-indigo-500 to-violet-600" },
   ];
 
   const utilities = [
-    { icon: Brain, label: 'AI Mentor', onClick: onToggleMentor },
-    { icon: Map, label: 'Map' },
-    { icon: BarChart3, label: 'Analytics' },
+    { icon: Brain, label: "AI Mentor", onClick: onToggleMentor },
+    { icon: Users, label: "Multiplayer", onClick: onToggleMultiplayer },
+    { icon: BarChart3, label: "Analytics" },
   ];
 
   return (
@@ -25,7 +36,7 @@ export function ControlPanel({ activePanel, onPanelChange, onToggleMentor }: Con
       initial={{ x: 400, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ delay: 0.4, duration: 0.6 }}
-      className="absolute right-6 top-24 z-20"
+      className="absolute right-3 md:right-6 top-24 z-20"
     >
       {/* Main Tools */}
       <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl p-3 shadow-2xl mb-4">
@@ -44,17 +55,17 @@ export function ControlPanel({ activePanel, onPanelChange, onToggleMentor }: Con
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                   isActive
                     ? `bg-gradient-to-r ${tool.color} shadow-lg scale-105`
-                    : 'bg-slate-800/50 hover:bg-slate-700/50'
+                    : "bg-slate-800/50 hover:bg-slate-700/50"
                 }`}
               >
                 <div
                   className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    isActive ? 'bg-white/20' : 'bg-slate-700'
+                    isActive ? "bg-white/20" : "bg-slate-700"
                   }`}
                 >
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-300'}`} />
+                  <Icon className={`w-5 h-5 ${isActive ? "text-white" : "text-slate-300"}`} />
                 </div>
-                <span className={`font-semibold ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                <span className={`font-semibold ${isActive ? "text-white" : "text-slate-300"}`}>
                   {tool.label}
                 </span>
               </motion.button>
@@ -71,12 +82,13 @@ export function ControlPanel({ activePanel, onPanelChange, onToggleMentor }: Con
 
             return (
               <motion.button
-                key={i}
+                key={util.label}
                 initial={{ x: 100, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ delay: 0.3 + 0.1 * i }}
                 onClick={util.onClick}
                 className="w-full flex items-center justify-center p-3 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 transition-all"
+                title={util.label}
               >
                 <Icon className="w-5 h-5 text-slate-300" />
               </motion.button>

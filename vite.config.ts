@@ -33,4 +33,24 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('motion')) {
+              return 'vendor-react'
+            }
+            if (id.includes('@mui') || id.includes('@emotion')) {
+              return 'vendor-ui'
+            }
+            if (id.includes('socket.io-client') || id.includes('axios') || id.includes('@tanstack')) {
+              return 'vendor-network'
+            }
+            return 'vendor'
+          }
+        },
+      },
+    },
+  },
 })

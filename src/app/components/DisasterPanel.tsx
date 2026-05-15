@@ -1,13 +1,17 @@
-import { motion } from 'motion/react';
-import { X, Cloud, Waves, Flame, Wind, Thermometer, AlertTriangle, Zap } from 'lucide-react';
-import { Paper, IconButton, Slider } from '@mui/material';
-import { useState } from 'react';
+import { motion } from "motion/react";
+import { X, Cloud, Waves, Flame, Wind, Thermometer, AlertTriangle, Zap, Mountain } from "lucide-react";
+import { Paper, IconButton, Slider } from "@mui/material";
+import { useState } from "react";
+import type { DisasterType, RegionProfile } from "../../game/types";
 
 interface DisasterPanelProps {
   onClose: () => void;
+  region: RegionProfile;
+  onTrigger: (disaster: DisasterType, intensity: number) => void;
+  activeDisaster: { type: string; intensity: number } | null;
 }
 
-export function DisasterPanel({ onClose }: DisasterPanelProps) {
+export function DisasterPanel({ onClose, region, onTrigger, activeDisaster }: DisasterPanelProps) {
   const [intensity, setIntensity] = useState(5);
 
   const disasters = [
@@ -17,7 +21,8 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
       description: 'Seismic activity and structural stress',
       color: 'from-orange-500 to-red-500',
       severity: 'High',
-      probability: '75%',
+      probability: `${Math.round(region.seismicRisk * 100)}%`,
+      type: "earthquake" as DisasterType,
     },
     {
       icon: Waves,
@@ -25,7 +30,8 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
       description: 'Rising water levels and erosion',
       color: 'from-blue-500 to-cyan-500',
       severity: 'Very High',
-      probability: '90%',
+      probability: `${Math.round(region.floodRisk * 100)}%`,
+      type: "flood" as DisasterType,
     },
     {
       icon: Flame,
@@ -33,7 +39,8 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
       description: 'Fire spread and smoke hazards',
       color: 'from-red-500 to-orange-500',
       severity: 'Medium',
-      probability: '45%',
+      probability: `${Math.round(region.wildfireRisk * 100)}%`,
+      type: "wildfire" as DisasterType,
     },
     {
       icon: Thermometer,
@@ -41,7 +48,8 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
       description: 'Extreme temperatures and power demand',
       color: 'from-yellow-500 to-red-500',
       severity: 'High',
-      probability: '80%',
+      probability: `${Math.round(region.heatRisk * 100)}%`,
+      type: "heatwave" as DisasterType,
     },
     {
       icon: Wind,
@@ -49,7 +57,8 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
       description: 'High winds and coastal damage',
       color: 'from-slate-500 to-blue-500',
       severity: 'Medium',
-      probability: '30%',
+      probability: `${Math.round(region.windRisk * 100)}%`,
+      type: "cyclone" as DisasterType,
     },
     {
       icon: Cloud,
@@ -57,7 +66,17 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
       description: 'Air pollution and health emergency',
       color: 'from-gray-500 to-slate-500',
       severity: 'Medium',
-      probability: '65%',
+      probability: `${Math.round((1 - region.seismicRisk) * 55 + region.heatRisk * 25)}%`,
+      type: "smog" as DisasterType,
+    },
+    {
+      icon: Mountain,
+      name: "Landslide",
+      description: "Slope failure and road blockage",
+      color: "from-amber-700 to-orange-500",
+      severity: "High",
+      probability: `${Math.round(region.slopeRisk * 100)}%`,
+      type: "landslide" as DisasterType,
     },
   ];
 
@@ -76,7 +95,7 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
       initial={{ x: 400, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="absolute right-72 top-24 w-[500px] z-20"
+      className="absolute right-72 top-24 w-[min(92vw,500px)] z-20"
     >
       <Paper
         elevation={12}
@@ -110,6 +129,12 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
             Simulations will test your infrastructure. Failures may result in casualties.
           </p>
         </div>
+        {activeDisaster && (
+          <div className="bg-red-500/20 border-b border-red-500/40 px-6 py-3 text-red-100 text-sm">
+            Active event: <span className="font-semibold">{activeDisaster.type}</span> at intensity{" "}
+            <span className="font-semibold">{activeDisaster.intensity}/10</span>
+          </div>
+        )}
 
         {/* Disaster List */}
         <div className="p-4 space-y-3 overflow-y-auto max-h-[calc(100vh-340px)]">
@@ -141,7 +166,10 @@ export function DisasterPanel({ onClose }: DisasterPanelProps) {
                   </div>
                 </div>
 
-                <button className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-semibold rounded-lg transition-all shadow-md">
+                <button
+                  onClick={() => onTrigger(disaster.type, intensity)}
+                  className="w-full px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-semibold rounded-lg transition-all shadow-md"
+                >
                   Simulate
                 </button>
               </motion.div>

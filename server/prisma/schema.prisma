@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  displayName  String
+  provider     String   @default("local")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  cities       City[]
+}
+
+model City {
+  id                String           @id @default(cuid())
+  userId            String
+  name              String
+  regionId          String
+  mode              String           @default("campaign")
+  budget            Int              @default(4000000)
+  resilienceScore   Float            @default(50)
+  sustainability    Float            @default(50)
+  engineering       Float            @default(45)
+  climateScore      Float            @default(45)
+  riskScore         Float            @default(50)
+  tick              Int              @default(0)
+  day               Int              @default(1)
+  hour              Int              @default(8)
+  gameStateJson     Json
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  buildings         Building[]
+  missions          Mission[]
+  disasters         DisasterEvent[]
+  rescueOperations  RescueOperation[]
+  metricSnapshots   MetricSnapshot[]
+  aiRecommendations AiRecommendation[]
+}
+
+model Building {
+  id                 String   @id @default(cuid())
+  cityId             String
+  templateId         String
+  name               String
+  category           String
+  structuralScore    Float
+  fireResistance     Float
+  floodResistance    Float
+  sustainability     Float
+  maintenanceScore   Float
+  condition          Float
+  occupancy          Int
+  resilientFeatures  Json
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  city               City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+}
+
+model Mission {
+  id             String   @id @default(cuid())
+  cityId         String
+  missionKey     String
+  title          String
+  difficulty     String
+  status         String
+  reward         Int
+  xpReward       Int
+  progress       Float
+  objectivesJson Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  city           City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+}
+
+model DisasterEvent {
+  id                 String   @id @default(cuid())
+  cityId             String
+  type               String
+  intensity          Int
+  status             String
+  impactedCitizens   Int      @default(0)
+  infrastructureLoss Float    @default(0)
+  detailsJson        Json
+  startedAt          DateTime @default(now())
+  endedAt            DateTime?
+  city               City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+}
+
+model RescueOperation {
+  id            String   @id @default(cuid())
+  cityId        String
+  operationType String
+  effectiveness Float
+  casualties    Int
+  savedLives    Int
+  detailsJson   Json
+  createdAt     DateTime @default(now())
+  city          City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+}
+
+model MetricSnapshot {
+  id               String   @id @default(cuid())
+  cityId           String
+  tick             Int
+  resilienceScore  Float
+  sustainability   Float
+  engineering      Float
+  climateScore     Float
+  riskScore        Float
+  citizenHealth    Float
+  citizenTrust     Float
+  panic            Float
+  createdAt        DateTime @default(now())
+  city             City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+}
+
+model AiRecommendation {
+  id         String   @id @default(cuid())
+  cityId     String
+  category   String
+  message    String
+  severity   String
+  contextJson Json
+  createdAt  DateTime @default(now())
+  city       City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+}

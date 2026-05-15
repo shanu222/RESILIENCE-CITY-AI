@@ -1,0 +1,42 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: resilience-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: resilience_city_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: resilience-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./server
+    container_name: resilience-backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      PORT: 4000
+      CORS_ORIGIN: http://localhost:5173
+      JWT_SECRET: change-this-in-prod
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/resilience_city_ai
+      REDIS_URL: redis://redis:6379
+      SIM_TICK_MS: 4000
+    ports:
+      - "4000:4000"
+
+volumes:
+  postgres_data:
