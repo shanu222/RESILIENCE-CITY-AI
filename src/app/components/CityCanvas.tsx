@@ -103,6 +103,9 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
                   color,
                   weight: Math.max(1, edge.capacity / 32),
                   opacity: 0.7,
+                  dashArray: state.evacuationCorridors.some((corridor) => corridor.edgeIds.includes(edge.id))
+                    ? "8 4"
+                    : undefined,
                 }}
               >
                 <Tooltip sticky>
@@ -159,6 +162,43 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
                 </CircleMarker>
               );
             })}
+          {state.shelters.map((shelter) => {
+            const district = state.districts.find((item) => item.id === shelter.districtId);
+            if (!district) return null;
+            return (
+              <CircleMarker
+                key={shelter.id}
+                center={[district.center[0] - 0.004, district.center[1] - 0.004]}
+                radius={5}
+                pathOptions={{
+                  color: shelter.open ? "#22c55e" : "#64748b",
+                  fillColor: shelter.open ? "#22c55e" : "#64748b",
+                  fillOpacity: 0.9,
+                }}
+              >
+                <Tooltip sticky>
+                  {shelter.name} | {shelter.open ? "open" : "closed"} | occ{" "}
+                  {Math.round((shelter.occupancy / Math.max(1, shelter.capacity)) * 100)}%
+                </Tooltip>
+              </CircleMarker>
+            );
+          })}
+          {state.districts.map((district) => {
+            const stranded = state.citizenAgents.filter(
+              (agent) => agent.districtId === district.id && agent.trapped
+            ).length;
+            if (stranded < 5) return null;
+            return (
+              <CircleMarker
+                key={`${district.id}-stranded`}
+                center={[district.center[0], district.center[1] + 0.006]}
+                radius={4}
+                pathOptions={{ color: "#f43f5e", fillColor: "#f43f5e", fillOpacity: 0.8 }}
+              >
+                <Tooltip sticky>Stranded civilians: {stranded}</Tooltip>
+              </CircleMarker>
+            );
+          })}
         </MapContainer>
       </div>
 
@@ -274,6 +314,23 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
                 .reduce((acc, hospital) => acc + hospital.traumaLoad / Math.max(1, hospital.bedCapacity), 0) * 100
             ) || 0}
             %
+          </span>
+          <span>
+            Stranded:{" "}
+            {state.citizenAgents.filter((agent) => agent.districtId === selectedDistrict.id && agent.trapped).length}
+          </span>
+          <span>
+            Vulnerable:{" "}
+            {
+              state.citizenAgents.filter(
+                (agent) =>
+                  agent.districtId === selectedDistrict.id &&
+                  (agent.vulnerableGroup === "elderly" ||
+                    agent.vulnerableGroup === "child" ||
+                    agent.vulnerableGroup === "disabled" ||
+                    agent.vulnerableGroup === "hospitalized")
+              ).length
+            }
           </span>
         </div>
       </div>

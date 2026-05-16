@@ -31,6 +31,14 @@ export type HazardOverlay =
   | "traffic"
   | "incidents"
   | "power";
+export type IncidentPriority = "low" | "urgent" | "critical" | "catastrophic";
+export type EmergencyPolicy =
+  | "city_evacuation"
+  | "curfew"
+  | "emergency_broadcast"
+  | "school_closure"
+  | "transport_shutdown"
+  | "fuel_rationing";
 export type FoundationType = "raft" | "pile" | "strip" | "mat";
 export type StructuralSystem = "moment-frame" | "shear-wall" | "braced-frame" | "masonry";
 export type MaterialType = "reinforced-concrete" | "steel" | "timber" | "masonry";
@@ -153,6 +161,8 @@ export interface CitizenState {
   resilienceAwareness: number;
   evacuationCompliance: number;
   survivalProbability: number;
+  misinformationLevel: number;
+  reunificationPressure: number;
 }
 
 export interface RescueState {
@@ -184,6 +194,9 @@ export interface CitizenAgent {
   trust: number;
   evacuated: boolean;
   trapped: boolean;
+  vulnerableGroup: "elderly" | "child" | "disabled" | "hospitalized" | "general";
+  familyClusterId: string;
+  followsWarnings: boolean;
 }
 
 export interface DistrictState {
@@ -285,6 +298,16 @@ export interface RoadGraphState {
   edges: RoadEdge[];
 }
 
+export interface EvacuationCorridor {
+  id: string;
+  name: string;
+  edgeIds: string[];
+  priority: number;
+  emergencyOnly: boolean;
+  restricted: boolean;
+  risk: number;
+}
+
 export interface Incident {
   id: string;
   districtId: string;
@@ -295,6 +318,7 @@ export interface Incident {
   urgency: number;
   infrastructureImpact: number;
   status: "queued" | "dispatched" | "resolved";
+  priority: IncidentPriority;
   createdTick: number;
 }
 
@@ -319,6 +343,34 @@ export interface EmergencyUnit {
   status: "idle" | "en-route" | "operating" | "maintenance";
   assignedIncidentId?: string;
   etaMinutes?: number;
+  routeRisk?: number;
+  routeEdgeIds?: string[];
+}
+
+export interface ShelterState {
+  id: string;
+  districtId: string;
+  name: string;
+  open: boolean;
+  capacity: number;
+  occupancy: number;
+  medicalSupport: number;
+  powerStability: number;
+  foodSupply: number;
+  waterSupply: number;
+  accessibility: number;
+  overcrowdingRisk: number;
+}
+
+export interface ActivePolicyState {
+  policy: EmergencyPolicy;
+  active: boolean;
+  impact: {
+    trust: number;
+    panic: number;
+    economy: number;
+    evacuationSpeed: number;
+  };
 }
 
 export interface LearningState {
@@ -359,6 +411,9 @@ export interface GameState {
   hospitals: HospitalState[];
   infrastructureNodes: InfrastructureNode[];
   roadGraph: RoadGraphState;
+  evacuationCorridors: EvacuationCorridor[];
+  shelters: ShelterState[];
+  policies: ActivePolicyState[];
   incidents: Incident[];
   emergencyUnits: EmergencyUnit[];
   learning: LearningState;

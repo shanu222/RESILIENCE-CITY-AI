@@ -39,6 +39,11 @@ export function useGameSimulation() {
         nodes: candidate.roadGraph?.nodes?.length ? candidate.roadGraph.nodes : initial.roadGraph.nodes,
         edges: candidate.roadGraph?.edges?.length ? candidate.roadGraph.edges : initial.roadGraph.edges,
       },
+      evacuationCorridors: candidate.evacuationCorridors?.length
+        ? candidate.evacuationCorridors
+        : initial.evacuationCorridors,
+      shelters: candidate.shelters?.length ? candidate.shelters : initial.shelters,
+      policies: candidate.policies?.length ? candidate.policies : initial.policies,
       incidents: candidate.incidents?.length ? candidate.incidents : initial.incidents,
       emergencyUnits: candidate.emergencyUnits?.length ? candidate.emergencyUnits : initial.emergencyUnits,
       districts: candidate.districts?.length ? candidate.districts : initial.districts,
@@ -134,6 +139,30 @@ export function useGameSimulation() {
       startMission: (missionId: string) => sendAction({ type: "start-mission", payload: { missionId } }),
       selectDistrict: (districtId: string) => sendAction({ type: "select-district", payload: { districtId } }),
       setOverlay: (overlay: HazardOverlay) => sendAction({ type: "set-overlay", payload: { overlay } }),
+      setCorridorEmergencyOnly: (corridorId: string, emergencyOnly: boolean) =>
+        sendAction({ type: "set-corridor-emergency-only", payload: { corridorId, emergencyOnly } }),
+      setCorridorRestricted: (corridorId: string, restricted: boolean) =>
+        sendAction({ type: "set-corridor-restricted", payload: { corridorId, restricted } }),
+      setCorridorPriority: (corridorId: string, priority: number) =>
+        sendAction({ type: "set-corridor-priority", payload: { corridorId, priority } }),
+      toggleShelter: (shelterId: string, open: boolean) =>
+        sendAction({ type: "toggle-shelter", payload: { shelterId, open } }),
+      assignUnitIncident: (unitId: string, incidentId: string) =>
+        sendAction({ type: "assign-unit-incident", payload: { unitId, incidentId } }),
+      setIncidentPriority: (
+        incidentId: string,
+        priority: "low" | "urgent" | "critical" | "catastrophic"
+      ) => sendAction({ type: "set-incident-priority", payload: { incidentId, priority } }),
+      togglePolicy: (
+        policy:
+          | "city_evacuation"
+          | "curfew"
+          | "emergency_broadcast"
+          | "school_closure"
+          | "transport_shutdown"
+          | "fuel_rationing",
+        active: boolean
+      ) => sendAction({ type: "toggle-policy", payload: { policy, active } }),
       toggleProfessionalMode: () => sendAction({ type: "toggle-professional-mode" }),
       toggleMultiplayer: () => sendAction({ type: "toggle-multiplayer" }),
       addTeammate: () => sendAction({ type: "add-teammate" }),

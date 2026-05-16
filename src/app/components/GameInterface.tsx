@@ -127,8 +127,22 @@ export function GameInterface({ onBack, initialMode }: GameInterfaceProps) {
             districts={state.districts}
             incidents={state.incidents}
             emergencyUnits={state.emergencyUnits}
+            corridors={state.evacuationCorridors}
+            shelters={state.shelters}
+            policies={state.policies}
             activeDisasterType={state.activeDisaster?.type ?? null}
             onRunOperation={(operation) => actions.runRescue(operation)}
+            onAssignUnitIncident={(unitId, incidentId) => actions.assignUnitIncident(unitId, incidentId)}
+            onSetIncidentPriority={(incidentId, priority) => actions.setIncidentPriority(incidentId, priority)}
+            onToggleShelter={(shelterId, open) => actions.toggleShelter(shelterId, open)}
+            onSetCorridorEmergencyOnly={(corridorId, emergencyOnly) =>
+              actions.setCorridorEmergencyOnly(corridorId, emergencyOnly)
+            }
+            onSetCorridorRestricted={(corridorId, restricted) =>
+              actions.setCorridorRestricted(corridorId, restricted)
+            }
+            onSetCorridorPriority={(corridorId, priority) => actions.setCorridorPriority(corridorId, priority)}
+            onTogglePolicy={(policy, active) => actions.togglePolicy(policy, active)}
             onClose={() => setActivePanel(null)}
           />
         </Suspense>
@@ -189,6 +203,10 @@ export function GameInterface({ onBack, initialMode }: GameInterfaceProps) {
             <span>Queued incidents: {state.incidents.filter((incident) => incident.status === "queued").length}</span>
             <span>Resource fuel: {Math.round(state.resources.fuel)}</span>
             <span>Medical stock: {Math.round(state.resources.medicalSupplies)}</span>
+            <span>Shelter open: {state.shelters.filter((shelter) => shelter.open).length}</span>
+            <span>Misinformation: {Math.round(state.citizens.misinformationLevel)}</span>
+            <span>Escalation tier: {state.rescue.responseEscalationLevel}</span>
+            <span>Mutual aid: {Math.round(state.rescue.mutualAidRequests)}</span>
           </div>
         </div>
       </div>

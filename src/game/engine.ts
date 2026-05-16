@@ -33,6 +33,13 @@ export type GameAction =
   | { type: "start-mission"; payload: { missionId: string } }
   | { type: "select-district"; payload: { districtId: string } }
   | { type: "set-overlay"; payload: { overlay: HazardOverlay } }
+  | { type: "set-corridor-emergency-only"; payload: { corridorId: string; emergencyOnly: boolean } }
+  | { type: "set-corridor-restricted"; payload: { corridorId: string; restricted: boolean } }
+  | { type: "set-corridor-priority"; payload: { corridorId: string; priority: number } }
+  | { type: "toggle-shelter"; payload: { shelterId: string; open: boolean } }
+  | { type: "assign-unit-incident"; payload: { unitId: string; incidentId: string } }
+  | { type: "set-incident-priority"; payload: { incidentId: string; priority: Incident["priority"] } }
+  | { type: "toggle-policy"; payload: { policy: GameState["policies"][number]["policy"]; active: boolean } }
   | { type: "toggle-professional-mode" }
   | { type: "load"; payload: GameState }
   | { type: "reset" };
@@ -104,6 +111,18 @@ function createCitizenAgents(count: number): GameState["citizenAgents"] {
       trust: 50 + (index % 35),
       evacuated: false,
       trapped: false,
+      vulnerableGroup:
+        index % 19 === 0
+          ? "elderly"
+          : index % 23 === 0
+          ? "child"
+          : index % 29 === 0
+          ? "disabled"
+          : index % 41 === 0
+          ? "hospitalized"
+          : "general",
+      familyClusterId: `family-${index % 65}`,
+      followsWarnings: index % 7 !== 0,
     };
   });
 }
@@ -216,6 +235,94 @@ function districtCenterNodeDistrictId(nodeId: string): string {
   return ROAD_NODES.find((node) => node.id === nodeId)?.districtId ?? DEFAULT_DISTRICTS[0].id;
 }
 
+function incidentPriorityFromSeverity(severity: number): "low" | "urgent" | "critical" | "catastrophic" {
+  if (severity >= 85) return "catastrophic";
+  if (severity >= 70) return "critical";
+  if (severity >= 50) return "urgent";
+  return "low";
+}
+
+function createInitialShelters(): GameState["shelters"] {
+  return [
+    {
+      id: "shelter-central",
+      districtId: "district-saddar",
+      name: "Central Civic Shelter",
+      open: true,
+      capacity: 950,
+      occupancy: 220,
+      medicalSupport: 74,
+      powerStability: 78,
+      foodSupply: 71,
+      waterSupply: 73,
+      accessibility: 84,
+      overcrowdingRisk: 12,
+    },
+    {
+      id: "shelter-river",
+      districtId: "district-malir-river",
+      name: "Riverbank Emergency Camp",
+      open: true,
+      capacity: 780,
+      occupancy: 180,
+      medicalSupport: 61,
+      powerStability: 69,
+      foodSupply: 66,
+      waterSupply: 68,
+      accessibility: 72,
+      overcrowdingRisk: 15,
+    },
+    {
+      id: "shelter-east",
+      districtId: "district-korangi",
+      name: "Eastern Transit Shelter",
+      open: false,
+      capacity: 1100,
+      occupancy: 0,
+      medicalSupport: 58,
+      powerStability: 64,
+      foodSupply: 62,
+      waterSupply: 64,
+      accessibility: 70,
+      overcrowdingRisk: 0,
+    },
+  ];
+}
+
+function createInitialCorridors(): GameState["evacuationCorridors"] {
+  return [
+    {
+      id: "corridor-core-west",
+      name: "Core-West Evac Corridor",
+      edgeIds: ["e1", "e10"],
+      priority: 90,
+      emergencyOnly: true,
+      restricted: false,
+      risk: 22,
+    },
+    {
+      id: "corridor-river-east",
+      name: "River-East Evac Corridor",
+      edgeIds: ["e7", "e4", "e9"],
+      priority: 72,
+      emergencyOnly: false,
+      restricted: false,
+      risk: 41,
+    },
+  ];
+}
+
+function createInitialPolicies(): GameState["policies"] {
+  return [
+    { policy: "city_evacuation", active: false, impact: { trust: -2, panic: -10, economy: -18, evacuationSpeed: 18 } },
+    { policy: "curfew", active: false, impact: { trust: -4, panic: -3, economy: -8, evacuationSpeed: 6 } },
+    { policy: "emergency_broadcast", active: true, impact: { trust: 5, panic: -9, economy: -1, evacuationSpeed: 8 } },
+    { policy: "school_closure", active: false, impact: { trust: 2, panic: -2, economy: -3, evacuationSpeed: 4 } },
+    { policy: "transport_shutdown", active: false, impact: { trust: -5, panic: 2, economy: -10, evacuationSpeed: -8 } },
+    { policy: "fuel_rationing", active: false, impact: { trust: -3, panic: 3, economy: -6, evacuationSpeed: -4 } },
+  ];
+}
+
 function createBuilding(
   templateId: string,
   regionId: RegionId,
@@ -320,6 +427,13 @@ function summarizeCitizens(state: GameState, agents: GameState["citizenAgents"])
   const trustAvg = agents.reduce((acc, item) => acc + item.trust, 0) / agents.length;
   const healthAvg = agents.reduce((acc, item) => acc + item.health, 0) / agents.length;
   const awarenessAvg = agents.reduce((acc, item) => acc + item.awareness, 0) / agents.length;
+  const misinformation = agents.filter((item) => !item.followsWarnings).length / agents.length;
+  const clusterMap = new Map<string, number>();
+  agents.forEach((agent) => {
+    clusterMap.set(agent.familyClusterId, (clusterMap.get(agent.familyClusterId) ?? 0) + (agent.evacuated ? 1 : 0));
+  });
+  const reunificationPressure =
+    Array.from(clusterMap.values()).filter((value) => value > 0 && value < 2).length / Math.max(1, clusterMap.size);
   const safe = clamp(state.citizens.total - injured - trapped, 0, state.citizens.total);
   return {
     ...state.citizens,
@@ -332,6 +446,8 @@ function summarizeCitizens(state: GameState, agents: GameState["citizenAgents"])
     resilienceAwareness: clamp(awarenessAvg, 0, 100),
     evacuationCompliance: clamp(agents.filter((item) => item.evacuated).length / agents.length * 100, 0, 100),
     survivalProbability: clamp((safe + evacuated * 0.5) / state.citizens.total * 100, 0, 100),
+    misinformationLevel: clamp(misinformation * 100, 0, 100),
+    reunificationPressure: clamp(reunificationPressure * 100, 0, 100),
   };
 }
 
@@ -376,6 +492,8 @@ export function createInitialState(): GameState {
       resilienceAwareness: 40,
       evacuationCompliance: 35,
       survivalProbability: 92,
+      misinformationLevel: 18,
+      reunificationPressure: 22,
     },
     rescue: {
       ambulances: 6,
@@ -417,6 +535,9 @@ export function createInitialState(): GameState {
       nodes: ROAD_NODES,
       edges: ROAD_EDGES,
     },
+    evacuationCorridors: createInitialCorridors(),
+    shelters: createInitialShelters(),
+    policies: createInitialPolicies(),
     incidents: [],
     emergencyUnits: createEmergencyUnits(),
     learning: {
@@ -485,6 +606,16 @@ function withTick(state: GameState): GameState {
     seaLevelRiseCm: clamp(state.climate.seaLevelRiseCm + 0.02, 0, 400),
     weather: state.climate.weather,
   };
+  const activePolicies = state.policies.filter((policy) => policy.active);
+  const policyEffect = activePolicies.reduce(
+    (acc, policy) => ({
+      trust: acc.trust + policy.impact.trust,
+      panic: acc.panic + policy.impact.panic,
+      economy: acc.economy + policy.impact.economy,
+      evacuationSpeed: acc.evacuationSpeed + policy.impact.evacuationSpeed,
+    }),
+    { trust: 0, panic: 0, economy: 0, evacuationSpeed: 0 }
+  );
 
   const districts = state.districts.map((district) => {
     const floodGain = climate.rainfallMm > 700 ? 0.75 + district.hazardExposure.flood * 0.01 : -0.45;
@@ -514,6 +645,10 @@ function withTick(state: GameState): GameState {
   });
 
   const districtById = new Map(districts.map((district) => [district.id, district]));
+  const corridorByEdgeId = new Map<string, GameState["evacuationCorridors"][number]>();
+  state.evacuationCorridors.forEach((corridor) => {
+    corridor.edgeIds.forEach((edgeId) => corridorByEdgeId.set(edgeId, corridor));
+  });
   const roadGraph = {
     ...state.roadGraph,
     edges: state.roadGraph.edges.map((edge) => {
@@ -535,11 +670,18 @@ function withTick(state: GameState): GameState {
       const obstruction = clamp(edge.obstruction + flood * 0.08 + fire * 0.07 + disasterPenalty, 0, 100);
       const damage = clamp(edge.damage + flood * 0.05 + (activeDisaster?.type === "earthquake" ? disasterImpact * 0.24 : 0) + (edge.id.includes("e6") || edge.id.includes("e7") ? disasterImpact * 0.12 : 0), 0, 100);
       const congestion = clamp(edge.congestion + traffic * 0.06 + (activeDisaster ? 0.9 : -0.4), 0, 100);
+      const corridor = corridorByEdgeId.get(edge.id);
+      const corridorPriorityBoost = corridor ? corridor.priority * 0.06 : 0;
+      const corridorEmergencyBoost = corridor?.emergencyOnly ? 10 : 0;
+      const corridorRestrictionPenalty = corridor?.restricted ? 16 : 0;
       const accessibility = clamp(
         edge.accessibility -
           obstruction * 0.05 * bridgeBoost -
           damage * 0.04 * bridgeBoost -
-          (climate.weather === "storm" ? 0.4 : 0),
+          (climate.weather === "storm" ? 0.4 : 0) +
+          corridorPriorityBoost +
+          corridorEmergencyBoost -
+          corridorRestrictionPenalty,
         0,
         100
       );
@@ -547,11 +689,27 @@ function withTick(state: GameState): GameState {
         ...edge,
         obstruction,
         damage,
-        congestion,
+        congestion: clamp(congestion - corridorPriorityBoost * 0.45 + corridorRestrictionPenalty * 0.5, 0, 100),
         accessibility,
       };
     }),
   };
+  const evacuationCorridors = state.evacuationCorridors.map((corridor) => {
+    const edges = roadGraph.edges.filter((edge) => corridor.edgeIds.includes(edge.id));
+    const risk =
+      edges.length === 0
+        ? corridor.risk
+        : clamp(
+            edges.reduce((acc, edge) => acc + (100 - edge.accessibility) * 0.6 + edge.obstruction * 0.2 + edge.damage * 0.2, 0) /
+              edges.length,
+            0,
+            100
+          );
+    return {
+      ...corridor,
+      risk,
+    };
+  });
 
   const infrastructureNodes = state.infrastructureNodes.map((node) => {
     const district = districtById.get(node.districtId);
@@ -597,6 +755,23 @@ function withTick(state: GameState): GameState {
       medicalSupplies: clamp(hospital.medicalSupplies - traumaLoad * 0.003 + state.resources.medicalSupplies * 0.01, 0, 100),
     };
   });
+  const sheltersBaseline = state.shelters.map((shelter) => {
+    const district = districtById.get(shelter.districtId);
+    const gridNode = infrastructureNodes.find((node) => node.kind === "substation");
+    const overload = shelter.occupancy / Math.max(1, shelter.capacity);
+    return {
+      ...shelter,
+      accessibility: clamp(
+        shelter.accessibility - (district?.dynamic.isolation ?? 0) * 0.06 - (100 - state.economy.roadHealth) * 0.02,
+        0,
+        100
+      ),
+      powerStability: clamp((shelter.powerStability + (gridNode?.health ?? 60) * 0.1) / 1.1 - (activeDisaster ? 0.4 : -0.1), 0, 100),
+      foodSupply: clamp(shelter.foodSupply - overload * 2 + state.resources.food * 0.01, 0, 100),
+      waterSupply: clamp(shelter.waterSupply - overload * 2.2 + state.resources.water * 0.01, 0, 100),
+      overcrowdingRisk: clamp(overload * 100, 0, 100),
+    };
+  });
 
   const buildingDistrictMap = new Map(districts.map((district) => [district.id, district]));
   const buildings = state.buildings.map((building) => {
@@ -626,27 +801,57 @@ function withTick(state: GameState): GameState {
   });
 
   const selectedDistrict = districts.find((district) => district.id === state.map.selectedDistrictId) ?? districts[0];
+  const shelterSlots = new Map(
+    sheltersBaseline.map((shelter) => [shelter.id, Math.max(0, shelter.capacity - shelter.occupancy)])
+  );
   // Chunk agent simulation by tick to keep frame costs predictable on mobile.
   const chunk = state.tick % 3;
   const agents = state.citizenAgents.map((agent, index) => {
     if (index % 3 !== chunk) return agent;
     const district = buildingDistrictMap.get(agent.districtId) ?? selectedDistrict;
     const pressure = (district.dynamic.waterLevel + district.dynamic.fireIntensity + district.dynamic.smoke) / 3;
-    const panic = clamp(agent.panic + pressure * 0.02 + (activeDisaster ? 0.6 : -0.2), 0, 100);
+    const panic = clamp(agent.panic + pressure * 0.02 + (activeDisaster ? 0.6 : -0.2) + policyEffect.panic * 0.015, 0, 100);
     const trapped = pressure > 58 && agent.mobility < 65 ? Math.random() < 0.08 : false;
-    const evacuated = agent.evacuated || (panic > 62 && agent.awareness > 45 && Math.random() < 0.1);
+    const shelteredTarget = sheltersBaseline
+      .filter((shelter) => shelter.open && shelter.accessibility > 25 && (shelterSlots.get(shelter.id) ?? 0) > 0)
+      .sort((a, b) => b.accessibility - a.accessibility || a.overcrowdingRisk - b.overcrowdingRisk)[0];
+    const warnedAndCompliant = agent.followsWarnings || activePolicies.some((policy) => policy.policy === "emergency_broadcast");
+    const evacuated =
+      agent.evacuated ||
+      (panic > 62 && agent.awareness > 45 && warnedAndCompliant && Math.random() < clamp(0.08 + policyEffect.evacuationSpeed * 0.003, 0.02, 0.35));
     const healthLoss = (trapped ? 0.8 : 0.08) + district.dynamic.smoke * 0.0015;
-    const nextDistrictId =
-      evacuated && agent.districtId !== selectedDistrict.id && index % 9 === 0 ? selectedDistrict.id : agent.districtId;
+    let nextDistrictId = agent.districtId;
+    if (evacuated && shelteredTarget && index % 9 === 0) {
+      nextDistrictId = shelteredTarget.districtId;
+      shelterSlots.set(shelteredTarget.id, Math.max(0, (shelterSlots.get(shelteredTarget.id) ?? 0) - 1));
+    }
     return {
       ...agent,
       districtId: nextDistrictId,
       panic,
       trapped,
       evacuated,
+      followsWarnings:
+        agent.followsWarnings || activePolicies.some((policy) => policy.policy === "emergency_broadcast")
+          ? true
+          : agent.followsWarnings,
       health: clamp(agent.health - healthLoss + (state.rescue.activeOperation ? 0.15 : 0), 0, 100),
-      trust: clamp(agent.trust + (state.rescue.activeOperation ? 0.25 : -0.06), 0, 100),
+      trust: clamp(agent.trust + (state.rescue.activeOperation ? 0.25 : -0.06) + policyEffect.trust * 0.02, 0, 100),
       awareness: clamp(agent.awareness + 0.04 + (activeDisaster ? 0.12 : 0), 0, 100),
+    };
+  });
+  const shelterOccupancyByDistrict = new Map<string, number>();
+  agents.forEach((agent) => {
+    if (!agent.evacuated) return;
+    shelterOccupancyByDistrict.set(agent.districtId, (shelterOccupancyByDistrict.get(agent.districtId) ?? 0) + 1);
+  });
+  const shelters = sheltersBaseline.map((shelter) => {
+    const occupancy = Math.min(shelter.capacity, shelter.occupancy * 0.92 + (shelterOccupancyByDistrict.get(shelter.districtId) ?? 0));
+    const overcrowdingRisk = clamp((occupancy / Math.max(1, shelter.capacity)) * 100, 0, 150);
+    return {
+      ...shelter,
+      occupancy,
+      overcrowdingRisk,
     };
   });
 
@@ -680,6 +885,7 @@ function withTick(state: GameState): GameState {
         urgency: Math.round(severity * 0.8 + district.dynamic.trafficLoad * 0.25),
         infrastructureImpact: Math.round((100 - district.infrastructureCondition) * 0.9),
         status: "queued",
+        priority: incidentPriorityFromSeverity(severity),
         createdTick: state.tick + 1,
       } as Incident;
     })
@@ -698,6 +904,7 @@ function withTick(state: GameState): GameState {
       return {
         ...incident,
         severity: nextSeverity,
+        priority: incidentPriorityFromSeverity(nextSeverity),
         status: resolved ? "resolved" : incident.status,
       };
     })
@@ -769,7 +976,13 @@ function withTick(state: GameState): GameState {
     waterDemand: clamp(40 + citizens.panic * 0.2 + climate.temperatureC * 0.25, 0, 100),
     powerGridHealth: clamp(state.economy.powerGridHealth - (activeDisaster ? 0.7 : -0.06), 0, 100),
     waterSystemHealth: clamp(state.economy.waterSystemHealth - (climate.rainfallMm > 900 ? 0.45 : -0.06), 0, 100),
-    roadHealth: clamp(state.economy.roadHealth - districts.reduce((acc, district) => acc + district.dynamic.isolation, 0) / 2400, 0, 100),
+    roadHealth: clamp(
+      state.economy.roadHealth -
+        districts.reduce((acc, district) => acc + district.dynamic.isolation, 0) / 2400 +
+        (activePolicies.some((policy) => policy.policy === "transport_shutdown") ? -0.6 : 0.15),
+      0,
+      100
+    ),
   };
   const resources = {
     fuel: clamp(state.resources.fuel - emergencyUnits.filter((unit) => unit.status !== "idle").length * 0.5 + (state.economy.taxesPerTick > 4500 ? 0.2 : 0), 0, 100),
@@ -779,7 +992,27 @@ function withTick(state: GameState): GameState {
     water: clamp(state.resources.water - climate.temperatureC * 0.01 - districts.reduce((acc, district) => acc + district.dynamic.waterLevel, 0) / 12000 + 0.1, 0, 100),
     temporaryShelters: clamp(state.resources.temporaryShelters + (citizens.displaced > 120 ? 0.7 : -0.25), 0, 100),
   };
-  const budget = Math.round(clamp(state.budget + taxes - maintenanceCost - repairCost - (activeDisaster ? 8000 : 1200), -8_000_000, 30_000_000));
+  const budget = Math.round(
+    clamp(
+      state.budget +
+        taxes -
+        maintenanceCost -
+        repairCost -
+        (activeDisaster ? 8000 : 1200) +
+        policyEffect.economy * 1200,
+      -8_000_000,
+      30_000_000
+    )
+  );
+  const hospitalOverload = hospitals.filter((hospital) => hospital.traumaLoad > hospital.bedCapacity).length;
+  const severeIncidents = incidents.filter((incident) => incident.priority === "critical" || incident.priority === "catastrophic").length;
+  const newFeedLines = [
+    severeIncidents > 0 ? `${severeIncidents} high-priority incidents await tactical dispatch.` : "Incident pressure currently manageable.",
+    hospitalOverload > 0 ? `${hospitalOverload} hospital(s) overloaded. Route critical evacuations to alternate facilities.` : "Hospital trauma load within capacity.",
+    state.resources.fuel < 30 ? "Fuel shortage warning: consider rationing or mutual aid transfers." : "Fuel reserves stable for current operations.",
+    state.rescue.blockedRoutes > 8 ? "Multiple corridor failures detected. Activate emergency-only lanes." : "Evacuation corridors partially stable.",
+  ];
+  warnings = [...newFeedLines, ...warnings].slice(0, 8);
 
   const engineeringFromBuildings =
     buildings.length === 0 ? state.engineeringScore : buildings.reduce((acc, building) => acc + building.structuralScore * (building.condition / 100), 0) / buildings.length;
@@ -810,9 +1043,12 @@ function withTick(state: GameState): GameState {
     climate,
     districts,
     roadGraph,
+    evacuationCorridors,
     infrastructureNodes,
     hospitals,
     resources,
+    shelters,
+    policies: state.policies,
     incidents,
     emergencyUnits,
     buildings,
@@ -984,6 +1220,7 @@ function withDisaster(state: GameState, disaster: DisasterType, intensity: numbe
       urgency: Math.round(normalized * 10),
       infrastructureImpact: Math.round(normalized * 8.5),
       status: "queued" as const,
+      priority: incidentPriorityFromSeverity(Math.round(normalized * 9.5)),
       createdTick: state.tick,
     },
   ].slice(-12);
@@ -1082,6 +1319,46 @@ function withRescueOperation(
   };
 }
 
+function withManualDispatch(state: GameState, unitId: string, incidentId: string): GameState {
+  const incident = state.incidents.find((item) => item.id === incidentId);
+  const unit = state.emergencyUnits.find((item) => item.id === unitId);
+  if (!incident || !unit) return state;
+  const weatherPenalty =
+    state.climate.weather === "storm" ? 2.4 : state.climate.weather === "fog" ? 1.3 : state.climate.weather === "heatwave" ? 0.6 : 0.2;
+  const route = estimateRoute(state.roadGraph, unit.districtId, incident.districtId, weatherPenalty);
+  const routeRisk = Math.round(
+    route.traversedEdgeIds.reduce((acc, edgeId) => {
+      const edge = state.roadGraph.edges.find((item) => item.id === edgeId);
+      if (!edge) return acc;
+      return acc + (100 - edge.accessibility) * 0.4 + edge.congestion * 0.3;
+    }, 0) / Math.max(1, route.traversedEdgeIds.length)
+  );
+  return {
+    ...state,
+    incidents: state.incidents.map((item) =>
+      item.id === incidentId ? { ...item, status: "dispatched", urgency: clamp(item.urgency + 6, 0, 100) } : item
+    ),
+    emergencyUnits: state.emergencyUnits.map((item) =>
+      item.id === unitId
+        ? {
+            ...item,
+            assignedIncidentId: incidentId,
+            status: "en-route",
+            etaMinutes: route.etaMinutes,
+            routeRisk,
+            routeEdgeIds: route.traversedEdgeIds,
+            fuel: clamp(item.fuel - 5, 0, 100),
+            fatigue: clamp(item.fatigue + 3, 0, 100),
+          }
+        : item
+    ),
+    mentorLog: appendLog(
+      state,
+      `Manual dispatch: ${unit.type} -> ${incident.hazardType} (${incident.priority}) ETA ${route.etaMinutes}m risk ${routeRisk}`
+    ),
+  };
+}
+
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case "tick":
@@ -1132,6 +1409,69 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         map: { ...state.map, activeOverlay: action.payload.overlay },
+      };
+    case "set-corridor-emergency-only":
+      return {
+        ...state,
+        evacuationCorridors: state.evacuationCorridors.map((corridor) =>
+          corridor.id === action.payload.corridorId ? { ...corridor, emergencyOnly: action.payload.emergencyOnly } : corridor
+        ),
+      };
+    case "set-corridor-restricted":
+      return {
+        ...state,
+        evacuationCorridors: state.evacuationCorridors.map((corridor) =>
+          corridor.id === action.payload.corridorId ? { ...corridor, restricted: action.payload.restricted } : corridor
+        ),
+      };
+    case "set-corridor-priority":
+      return {
+        ...state,
+        evacuationCorridors: state.evacuationCorridors.map((corridor) =>
+          corridor.id === action.payload.corridorId
+            ? { ...corridor, priority: clamp(action.payload.priority, 0, 100) }
+            : corridor
+        ),
+      };
+    case "toggle-shelter":
+      return {
+        ...state,
+        shelters: state.shelters.map((shelter) =>
+          shelter.id === action.payload.shelterId ? { ...shelter, open: action.payload.open } : shelter
+        ),
+      };
+    case "assign-unit-incident":
+      return withManualDispatch(state, action.payload.unitId, action.payload.incidentId);
+    case "set-incident-priority":
+      return {
+        ...state,
+        incidents: state.incidents.map((incident) =>
+          incident.id === action.payload.incidentId
+            ? {
+                ...incident,
+                priority: action.payload.priority,
+                urgency: clamp(
+                  incident.urgency +
+                    (action.payload.priority === "catastrophic"
+                      ? 20
+                      : action.payload.priority === "critical"
+                      ? 12
+                      : action.payload.priority === "urgent"
+                      ? 6
+                      : -3),
+                  0,
+                  100
+                ),
+              }
+            : incident
+        ),
+      };
+    case "toggle-policy":
+      return {
+        ...state,
+        policies: state.policies.map((policy) =>
+          policy.policy === action.payload.policy ? { ...policy, active: action.payload.active } : policy
+        ),
       };
     case "toggle-professional-mode":
       return {

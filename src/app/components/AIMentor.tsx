@@ -14,6 +14,12 @@ export function AIMentor({ state }: AIMentorProps) {
     .filter((incident) => incident.status !== "resolved")
     .sort((a, b) => b.urgency - a.urgency)[0];
   const weakestNode = state.infrastructureNodes.slice().sort((a, b) => a.health - b.health)[0];
+  const overloadedShelter = state.shelters
+    .filter((shelter) => shelter.open)
+    .sort((a, b) => b.occupancy / Math.max(1, b.capacity) - a.occupancy / Math.max(1, a.capacity))[0];
+  const fragileCorridor = state.evacuationCorridors
+    .slice()
+    .sort((a, b) => b.risk - a.risk)[0];
   const messages = [
     {
       type: "info",
@@ -32,6 +38,16 @@ export function AIMentor({ state }: AIMentorProps) {
       text: highestIncident
         ? `${selectedDistrict.name} command forecast: ${highestIncident.hazardType} queue may escalate if dispatch ETA exceeds 8 minutes.`
         : "No high-priority incidents queued. Continue proactive retrofit scheduling.",
+      icon: AlertTriangle,
+    },
+    {
+      type: "warning",
+      text:
+        overloadedShelter && overloadedShelter.occupancy / Math.max(1, overloadedShelter.capacity) > 0.88
+          ? `${overloadedShelter.name} may exceed safe capacity soon. Open alternate shelter corridors now.`
+          : fragileCorridor
+          ? `${fragileCorridor.name} risk is rising; prioritize emergency-only routing for vulnerable evacuations.`
+          : "Shelter and corridor status stable.",
       icon: AlertTriangle,
     },
   ];

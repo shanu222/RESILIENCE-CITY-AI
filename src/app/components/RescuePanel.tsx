@@ -1,7 +1,17 @@
 import { motion } from "motion/react";
 import { X, Ambulance, Flame, Plane, LifeBuoy, ShieldAlert } from "lucide-react";
 import { IconButton, Paper } from "@mui/material";
-import type { CitizenState, DistrictState, EmergencyUnit, Incident, RescueState } from "../../game/types";
+import { useMemo, useState } from "react";
+import type {
+  CitizenState,
+  DistrictState,
+  EmergencyPolicy,
+  EmergencyUnit,
+  EvacuationCorridor,
+  Incident,
+  RescueState,
+  ShelterState,
+} from "../../game/types";
 
 interface RescuePanelProps {
   rescue: RescueState;
@@ -9,8 +19,22 @@ interface RescuePanelProps {
   districts: DistrictState[];
   incidents: Incident[];
   emergencyUnits: EmergencyUnit[];
+  corridors: EvacuationCorridor[];
+  shelters: ShelterState[];
+  policies: {
+    policy: EmergencyPolicy;
+    active: boolean;
+    impact: { trust: number; panic: number; economy: number; evacuationSpeed: number };
+  }[];
   activeDisasterType: string | null;
   onRunOperation: (operation: "usar" | "triage" | "evacuate" | "airlift" | "fireline") => void;
+  onAssignUnitIncident: (unitId: string, incidentId: string) => void;
+  onSetIncidentPriority: (incidentId: string, priority: Incident["priority"]) => void;
+  onToggleShelter: (shelterId: string, open: boolean) => void;
+  onSetCorridorEmergencyOnly: (corridorId: string, emergencyOnly: boolean) => void;
+  onSetCorridorRestricted: (corridorId: string, restricted: boolean) => void;
+  onSetCorridorPriority: (corridorId: string, priority: number) => void;
+  onTogglePolicy: (policy: EmergencyPolicy, active: boolean) => void;
   onClose: () => void;
 }
 
@@ -20,8 +44,18 @@ export function RescuePanel({
   districts,
   incidents,
   emergencyUnits,
+  corridors,
+  shelters,
+  policies,
   activeDisasterType,
   onRunOperation,
+  onAssignUnitIncident,
+  onSetIncidentPriority,
+  onToggleShelter,
+  onSetCorridorEmergencyOnly,
+  onSetCorridorRestricted,
+  onSetCorridorPriority,
+  onTogglePolicy,
   onClose,
 }: RescuePanelProps) {
   const operations = [
@@ -31,6 +65,12 @@ export function RescuePanel({
     { id: "airlift", icon: Plane, name: "Airlift", detail: "Critical patient transfer to hospitals" },
     { id: "fireline", icon: Flame, name: "Fireline", detail: "Fire containment and hazard perimeter control" },
   ] as const;
+  const [selectedUnit, setSelectedUnit] = useState<string>(emergencyUnits[0]?.id ?? "");
+  const [selectedIncident, setSelectedIncident] = useState<string>(incidents[0]?.id ?? "");
+  const activeIncidents = useMemo(
+    () => incidents.filter((incident) => incident.status !== "resolved").sort((a, b) => b.urgency - a.urgency),
+    [incidents]
+  );
 
   return (
     <motion.div
@@ -116,7 +156,7 @@ export function RescuePanel({
                   <div key={incident.id} className="flex items-center justify-between text-xs text-slate-200">
                     <span>{incident.hazardType}</span>
                     <span>
-                      sev {Math.round(incident.severity)} | {incident.status}
+                      sev {Math.round(incident.severity)} | {incident.priority}
                     </span>
                   </div>
                 ))}
@@ -131,6 +171,131 @@ export function RescuePanel({
                   <span>
                     {unit.status} | ETA {unit.etaMinutes ?? "-"}m
                   </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-slate-900/65 border border-slate-700 rounded-xl p-3 mt-3">
+            <p className="text-xs text-slate-300 mb-2">Manual dispatch control</p>
+            <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+              <select
+                value={selectedUnit}
+                onChange={(event) => setSelectedUnit(event.target.value)}
+                className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-slate-200"
+              >
+                {emergencyUnits.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.type} ({unit.status})
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedIncident}
+                onChange={(event) => setSelectedIncident(event.target.value)}
+                className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-slate-200"
+              >
+                {activeIncidents.map((incident) => (
+                  <option key={incident.id} value={incident.id}>
+                    {incident.hazardType} / {incident.priority}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={() => selectedUnit && selectedIncident && onAssignUnitIncident(selectedUnit, selectedIncident)}
+              className="w-full rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold px-3 py-2"
+            >
+              Assign Unit To Incident
+            </button>
+          </div>
+          <div className="bg-slate-900/65 border border-slate-700 rounded-xl p-3 mt-3">
+            <p className="text-xs text-slate-300 mb-2">Incident priority layers</p>
+            <div className="space-y-1 max-h-24 overflow-y-auto">
+              {activeIncidents.slice(0, 4).map((incident) => (
+                <div key={incident.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-slate-200">{incident.hazardType}</span>
+                  <select
+                    value={incident.priority}
+                    onChange={(event) => onSetIncidentPriority(incident.id, event.target.value as Incident["priority"])}
+                    className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-slate-200"
+                  >
+                    <option value="low">low</option>
+                    <option value="urgent">urgent</option>
+                    <option value="critical">critical</option>
+                    <option value="catastrophic">catastrophic</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-slate-900/65 border border-slate-700 rounded-xl p-3 mt-3">
+            <p className="text-xs text-slate-300 mb-2">Evacuation corridors</p>
+            <div className="space-y-2 max-h-24 overflow-y-auto">
+              {corridors.map((corridor) => (
+                <div key={corridor.id} className="text-xs text-slate-200 border border-slate-700 rounded-md p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span>{corridor.name}</span>
+                    <span>risk {Math.round(corridor.risk)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onSetCorridorEmergencyOnly(corridor.id, !corridor.emergencyOnly)}
+                      className={`px-2 py-1 rounded ${
+                        corridor.emergencyOnly ? "bg-cyan-600 text-white" : "bg-slate-700 text-slate-300"
+                      }`}
+                    >
+                      emergency
+                    </button>
+                    <button
+                      onClick={() => onSetCorridorRestricted(corridor.id, !corridor.restricted)}
+                      className={`px-2 py-1 rounded ${
+                        corridor.restricted ? "bg-rose-600 text-white" : "bg-slate-700 text-slate-300"
+                      }`}
+                    >
+                      restrict
+                    </button>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={corridor.priority}
+                      onChange={(event) => onSetCorridorPriority(corridor.id, Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-slate-900/65 border border-slate-700 rounded-xl p-3 mt-3">
+            <p className="text-xs text-slate-300 mb-2">Shelter routing</p>
+            <div className="space-y-1 max-h-24 overflow-y-auto">
+              {shelters.map((shelter) => (
+                <div key={shelter.id} className="flex items-center justify-between text-xs text-slate-200 gap-2">
+                  <span>
+                    {shelter.name} ({Math.round((shelter.occupancy / Math.max(1, shelter.capacity)) * 100)}%)
+                  </span>
+                  <button
+                    onClick={() => onToggleShelter(shelter.id, !shelter.open)}
+                    className={`px-2 py-1 rounded ${shelter.open ? "bg-emerald-600 text-white" : "bg-slate-700 text-slate-300"}`}
+                  >
+                    {shelter.open ? "open" : "closed"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-slate-900/65 border border-slate-700 rounded-xl p-3 mt-3">
+            <p className="text-xs text-slate-300 mb-2">Emergency policy system</p>
+            <div className="space-y-1 max-h-24 overflow-y-auto">
+              {policies.map((policy) => (
+                <div key={policy.policy} className="flex items-center justify-between text-xs text-slate-200 gap-2">
+                  <span>{policy.policy.replaceAll("_", " ")}</span>
+                  <button
+                    onClick={() => onTogglePolicy(policy.policy, !policy.active)}
+                    className={`px-2 py-1 rounded ${policy.active ? "bg-violet-600 text-white" : "bg-slate-700 text-slate-300"}`}
+                  >
+                    {policy.active ? "active" : "off"}
+                  </button>
                 </div>
               ))}
             </div>
