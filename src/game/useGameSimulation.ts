@@ -5,51 +5,42 @@ import { dispatchGameAction, guestLogin, loadCityState, saveCityState, setApiTok
 import { connectSocket, getSocket } from "../app/services/socket";
 import { useAuthStore } from "../app/stores/authStore";
 
-export function useGameSimulation() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, () => loadGame() ?? createInitialState());
-  const cityIdRef = useRef<string | null>(null);
-  const hydratedRef = useRef(false);
-  const stateRef = useRef<GameState>(state);
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  const normalizeState = useCallback((input: unknown, base?: GameState): GameState => {
-    const initial = base ?? createInitialState();
-    if (!input || typeof input !== "object") return initial;
-    const candidate = input as Partial<GameState>;
-    return {
-      ...initial,
-      ...candidate,
-      climate: { ...initial.climate, ...(candidate.climate ?? {}) },
-      citizens: { ...initial.citizens, ...(candidate.citizens ?? {}) },
-      rescue: { ...initial.rescue, ...(candidate.rescue ?? {}) },
-      economy: { ...initial.economy, ...(candidate.economy ?? {}) },
-      resources: { ...initial.resources, ...(candidate.resources ?? {}) },
-      learning: { ...initial.learning, ...(candidate.learning ?? {}) },
-      map: { ...initial.map, ...(candidate.map ?? {}) },
-      hospitals: candidate.hospitals?.length ? candidate.hospitals : initial.hospitals,
-      infrastructureNodes: candidate.infrastructureNodes?.length
-        ? candidate.infrastructureNodes
-        : initial.infrastructureNodes,
-      roadGraph: {
-        ...initial.roadGraph,
-        ...(candidate.roadGraph ?? {}),
-        nodes: candidate.roadGraph?.nodes?.length ? candidate.roadGraph.nodes : initial.roadGraph.nodes,
-        edges: candidate.roadGraph?.edges?.length ? candidate.roadGraph.edges : initial.roadGraph.edges,
-      },
-      evacuationCorridors: candidate.evacuationCorridors?.length
-        ? candidate.evacuationCorridors
-        : initial.evacuationCorridors,
-      shelters: candidate.shelters?.length ? candidate.shelters : initial.shelters,
-      policies: candidate.policies?.length ? candidate.policies : initial.policies,
-      incidents: candidate.incidents?.length ? candidate.incidents : initial.incidents,
-      emergencyUnits: candidate.emergencyUnits?.length ? candidate.emergencyUnits : initial.emergencyUnits,
-      districts: candidate.districts?.length ? candidate.districts : initial.districts,
-      citizenAgents: candidate.citizenAgents?.length ? candidate.citizenAgents : initial.citizenAgents,
-      missions: candidate.missions?.length ? candidate.missions : initial.missions,
-      buildings: candidate.buildings?.map((building) => ({
+function normalizeGameState(input: unknown, base?: GameState): GameState {
+  const initial = base ?? createInitialState();
+  if (!input || typeof input !== "object") return initial;
+  const candidate = input as Partial<GameState>;
+  return {
+    ...initial,
+    ...candidate,
+    climate: { ...initial.climate, ...(candidate.climate ?? {}) },
+    citizens: { ...initial.citizens, ...(candidate.citizens ?? {}) },
+    rescue: { ...initial.rescue, ...(candidate.rescue ?? {}) },
+    economy: { ...initial.economy, ...(candidate.economy ?? {}) },
+    resources: { ...initial.resources, ...(candidate.resources ?? {}) },
+    learning: { ...initial.learning, ...(candidate.learning ?? {}) },
+    map: { ...initial.map, ...(candidate.map ?? {}) },
+    hospitals: candidate.hospitals?.length ? candidate.hospitals : initial.hospitals,
+    infrastructureNodes: candidate.infrastructureNodes?.length
+      ? candidate.infrastructureNodes
+      : initial.infrastructureNodes,
+    roadGraph: {
+      ...initial.roadGraph,
+      ...(candidate.roadGraph ?? {}),
+      nodes: candidate.roadGraph?.nodes?.length ? candidate.roadGraph.nodes : initial.roadGraph.nodes,
+      edges: candidate.roadGraph?.edges?.length ? candidate.roadGraph.edges : initial.roadGraph.edges,
+    },
+    evacuationCorridors: candidate.evacuationCorridors?.length
+      ? candidate.evacuationCorridors
+      : initial.evacuationCorridors,
+    shelters: candidate.shelters?.length ? candidate.shelters : initial.shelters,
+    policies: candidate.policies?.length ? candidate.policies : initial.policies,
+    incidents: candidate.incidents?.length ? candidate.incidents : initial.incidents,
+    emergencyUnits: candidate.emergencyUnits?.length ? candidate.emergencyUnits : initial.emergencyUnits,
+    districts: candidate.districts?.length ? candidate.districts : initial.districts,
+    citizenAgents: candidate.citizenAgents?.length ? candidate.citizenAgents : initial.citizenAgents,
+    missions: candidate.missions?.length ? candidate.missions : initial.missions,
+    buildings:
+      candidate.buildings?.map((building) => ({
         ...building,
         districtId: (building as any).districtId ?? initial.map.selectedDistrictId,
         blueprint: (building as any).blueprint ?? {
@@ -72,7 +63,24 @@ export function useGameSimulation() {
           lean: 0,
         },
       })) ?? initial.buildings,
-    };
+  };
+}
+
+export function useGameSimulation() {
+  const [state, dispatch] = useReducer(gameReducer, undefined, () => {
+    const loaded = loadGame();
+    return normalizeGameState(loaded);
+  });
+  const cityIdRef = useRef<string | null>(null);
+  const hydratedRef = useRef(false);
+  const stateRef = useRef<GameState>(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const normalizeState = useCallback((input: unknown, base?: GameState): GameState => {
+    return normalizeGameState(input, base);
   }, []);
 
   useEffect(() => {

@@ -10,12 +10,29 @@ interface CityCanvasProps {
 }
 
 export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCanvasProps) {
+  const isValidCoord = (coord: unknown): coord is [number, number] =>
+    Array.isArray(coord) &&
+    coord.length === 2 &&
+    typeof coord[0] === "number" &&
+    Number.isFinite(coord[0]) &&
+    typeof coord[1] === "number" &&
+    Number.isFinite(coord[1]);
+  const isValidPolygon = (polygon: unknown): polygon is [number, number][] =>
+    Array.isArray(polygon) && polygon.length >= 3 && polygon.every(isValidCoord);
+
+  const safeCenter: [number, number] = isValidCoord(state.map.center) ? state.map.center : [24.88, 67.06];
+  const validDistricts = state.districts.filter(
+    (district) => isValidCoord(district.center) && isValidPolygon(district.polygon)
+  );
+  const validNodes = state.roadGraph.nodes.filter((node) => isValidCoord(node.position));
+
   const topBuildings = state.buildings.slice(-6);
   const weatherLabel = state.activeDisaster
     ? `${state.activeDisaster.type.toUpperCase()} ALERT`
     : `${state.climate.weather.toUpperCase()} CONDITIONS`;
   const weatherAccent = state.activeDisaster ? "bg-red-400" : "bg-yellow-400";
-  const selectedDistrict = state.districts.find((district) => district.id === state.map.selectedDistrictId) ?? state.districts[0];
+  const selectedDistrict =
+    validDistricts.find((district) => district.id === state.map.selectedDistrictId) ?? validDistricts[0];
   const overlay: GameState["map"]["activeOverlay"] = state.map.activeOverlay;
 
   const getDistrictOverlayValue = (district: GameState["districts"][number]) => {
@@ -56,7 +73,7 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
     <div className="absolute inset-0 bg-gradient-to-b from-sky-400 to-emerald-200">
       <div className="absolute inset-0 opacity-85">
         <MapContainer
-          center={state.map.center}
+          center={safeCenter}
           zoom={state.map.zoom}
           style={{ height: "100%", width: "100%" }}
           zoomControl={false}
@@ -66,7 +83,7 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution="&copy; OpenStreetMap contributors"
           />
-          {state.districts.map((district) => {
+          {validDistricts.map((district) => {
             const value = getDistrictOverlayValue(district);
             const color = overlayColor(value);
             const selected = district.id === state.map.selectedDistrictId;
@@ -90,9 +107,9 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
             );
           })}
           {state.roadGraph.edges.map((edge) => {
-            const from = state.roadGraph.nodes.find((node) => node.id === edge.from);
-            const to = state.roadGraph.nodes.find((node) => node.id === edge.to);
-            if (!from || !to) return null;
+            const from = validNodes.find((node) => node.id === edge.from);
+            const to = validNodes.find((node) => node.id === edge.to);
+            if (!from || !to || !isValidCoord(from.position) || !isValidCoord(to.position)) return null;
             const stress = 100 - edge.accessibility;
             const color = stress > 75 ? "#ef4444" : stress > 50 ? "#f59e0b" : "#22c55e";
             return (
@@ -114,7 +131,7 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
               </Polyline>
             );
           })}
-          {state.districts.map((district) => (
+          {validDistricts.map((district) => (
             <CircleMarker
               key={`${district.id}-center`}
               center={district.center}
@@ -126,7 +143,7 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
             .filter((incident) => incident.status !== "resolved")
             .map((incident) => {
               const district = state.districts.find((item) => item.id === incident.districtId);
-              if (!district) return null;
+              if (!district || !isValidCoord(district.center)) return null;
               return (
                 <CircleMarker
                   key={incident.id}
@@ -148,7 +165,7 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
             .filter((unit) => unit.status !== "idle")
             .map((unit) => {
               const district = state.districts.find((item) => item.id === unit.districtId);
-              if (!district) return null;
+              if (!district || !isValidCoord(district.center)) return null;
               return (
                 <CircleMarker
                   key={unit.id}
@@ -164,7 +181,7 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
             })}
           {state.shelters.map((shelter) => {
             const district = state.districts.find((item) => item.id === shelter.districtId);
-            if (!district) return null;
+            if (!district || !isValidCoord(district.center)) return null;
             return (
               <CircleMarker
                 key={shelter.id}
@@ -183,11 +200,11 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
               </CircleMarker>
             );
           })}
-          {state.districts.map((district) => {
+          {validDistricts.map((district) => {
             const stranded = state.citizenAgents.filter(
               (agent) => agent.districtId === district.id && agent.trapped
             ).length;
-            if (stranded < 5) return null;
+            if (stranded < 5 || !isValidCoord(district.center)) return null;
             return (
               <CircleMarker
                 key={`${district.id}-stranded`}
@@ -289,8 +306,9 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
       </div>
 
       {/* District intelligence */}
-      <div className="absolute left-8 bottom-8 bg-slate-950/75 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 backdrop-blur-md w-[min(22rem,90vw)]">
-        <p className="font-semibold text-white mb-1">{selectedDistrict.name}</p>
+      {selectedDistrict && (
+        <div className="absolute left-8 bottom-8 bg-slate-950/75 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 backdrop-blur-md w-[min(22rem,90vw)]">
+          <p className="font-semibold text-white mb-1">{selectedDistrict.name}</p>
         <div className="grid grid-cols-2 gap-1">
           <span>Terrain: {selectedDistrict.terrain}</span>
           <span>Pop density: {selectedDistrict.populationDensity}</span>
@@ -333,7 +351,8 @@ export function CityCanvas({ state, onSelectDistrict, onOverlayChange }: CityCan
             }
           </span>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Disaster overlays */}
       {state.activeDisaster?.type === "flood" && (
